@@ -36,7 +36,7 @@ build step (it only marks the `src/*.js` sources as ESM for Node — see §4). N
 
 | | |
 |---|---|
-| **Chrome ≥ 116** | `minimum_chrome_version` in the manifest. Any Chromium-based browser with MV3 and `chrome.storage.session` works (Edge, Brave). |
+| **Chrome ≥ 116** | `minimum_chrome_version` in the manifest — `chrome.storage.session` and MV3 service workers are what set the floor. Other Chromium browsers (Edge, Brave) expose the same APIs but are untested here. |
 | **Git** | Only to clone. You can also download the ZIP from GitHub and unpack it. |
 | **A TypeSafe API key** | Create one in the console: <https://console.typesafe.ai/keys> (quick start: <https://docs.typesafe.ai/introduction/quickstart>). The extension is useless without it: every score comes from the API. |
 | **Node.js ≥ 18** *(optional)* | Only for `tools/` — the calibration harness and the icon generator. `src/typesafe-client.js` falls back to `globalThis.fetch`, which needs Node 18 or newer. Not needed to run the extension. |
