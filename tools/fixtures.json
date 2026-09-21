@@ -1,0 +1,288 @@
+[
+  {
+    "name": "poste-sospensione",
+    "expect": "phishing",
+    "row": {
+      "id": "thread-f:1806400000000000001",
+      "senderName": "Poste Italiane",
+      "senderAddress": "sicurezza@poste-it-verifica.com",
+      "subject": "Il tuo conto BancoPosta e' stato sospeso",
+      "snippet": "Gentile cliente, abbiamo rilevato un accesso non autorizzato. Verifica la tua identita' entro 24 ore o il conto sara' bloccato definitivamente.",
+      "hasAttachment": false,
+      "otherSendersCount": 0
+    }
+  },
+  {
+    "name": "intesa-accesso-bloccato",
+    "expect": "phishing",
+    "row": {
+      "id": "thread-f:1806400000000000002",
+      "senderName": "Intesa Sanpaolo",
+      "senderAddress": "no-reply@intesa-sanpaolo-sicurezza.net",
+      "subject": "Avviso: accesso a Intesa Sanpaolo Mobile bloccato",
+      "snippet": "Per motivi di sicurezza il tuo profilo e' stato limitato. Accedi ora con le tue credenziali e il codice O-Key per riattivare i servizi dispositivi.",
+      "hasAttachment": false,
+      "otherSendersCount": 0
+    }
+  },
+  {
+    "name": "agenzia-entrate-rimborso",
+    "expect": "phishing",
+    "row": {
+      "id": "thread-f:1806400000000000003",
+      "senderName": "Agenzia delle Entrate",
+      "senderAddress": "rimborsi@agenziaentrate-rimborso.info",
+      "subject": "Rimborso fiscale di 738,42 EUR in attesa di accredito",
+      "snippet": "A seguito del controllo della dichiarazione 2025 ti spetta un rimborso. Inserisci i dati della carta su cui accreditare l'importo entro il 30/09.",
+      "hasAttachment": false,
+      "otherSendersCount": 0
+    }
+  },
+  {
+    "name": "brt-giacenza-dogana",
+    "expect": "phishing",
+    "row": {
+      "id": "thread-f:1806400000000000004",
+      "senderName": "BRT Corriere Espresso",
+      "senderAddress": "tracking@brt-spedizioni-italia.top",
+      "subject": "Il tuo pacco e' in giacenza: spese doganali 2,99 EUR",
+      "snippet": "Non e' stato possibile consegnare la spedizione 4471902233. Paga 2,99 EUR di spese doganali entro 48 ore per programmare una nuova consegna.",
+      "hasAttachment": false,
+      "otherSendersCount": 0
+    }
+  },
+  {
+    "name": "fake-google-alert",
+    "expect": "phishing",
+    "row": {
+      "id": "thread-f:1806400000000000005",
+      "senderName": "Google Account Security",
+      "senderAddress": "no-reply@accounts-google-security.co",
+      "subject": "Critical security alert: suspicious sign-in blocked",
+      "snippet": "Someone in Lagos, Nigeria tried to sign in to your account. If this was not you, confirm your password now to keep your account active.",
+      "hasAttachment": false,
+      "otherSendersCount": 0
+    }
+  },
+  {
+    "name": "ceo-fraud",
+    "expect": "phishing",
+    "row": {
+      "id": "thread-f:1806400000000000006",
+      "senderName": "Andrea Ferraro (CEO)",
+      "senderAddress": "a.ferraro.ceo@outlook-corp-mail.com",
+      "subject": "Are you at your desk?",
+      "snippet": "I am in a meeting and cannot take calls. I need you to process an urgent supplier payment today, keep it confidential for now. Reply and I will send the IBAN.",
+      "hasAttachment": false,
+      "otherSendersCount": 0
+    }
+  },
+  {
+    "name": "casino-giri-gratis",
+    "expect": "spam",
+    "row": {
+      "id": "thread-f:1806400000000000007",
+      "senderName": "MegaSlot Casino",
+      "senderAddress": "promo@megaslot-bonus.click",
+      "subject": "500 giri gratis + 200% sul primo deposito, solo oggi!",
+      "snippet": "Registrati in 30 secondi e ricevi subito 500 free spin sulle slot piu' giocate. Nessun documento richiesto, prelievi in 10 minuti. Gioca ora!",
+      "hasAttachment": false,
+      "otherSendersCount": 0
+    }
+  },
+  {
+    "name": "integratori-dimagranti",
+    "expect": "spam",
+    "row": {
+      "id": "thread-f:1806400000000000008",
+      "senderName": "KetoSlim Italia",
+      "senderAddress": "offerte@ketoslim-italia-shop.xyz",
+      "subject": "-12 kg in 3 settimane senza dieta ne' palestra",
+      "snippet": "Il nuovo integratore naturale che sta facendo impazzire l'Italia. Sconto del 70% per le prime 100 confezioni, spedizione gratuita e pagamento alla consegna.",
+      "hasAttachment": false,
+      "otherSendersCount": 0
+    }
+  },
+  {
+    "name": "cold-b2b-outreach",
+    "expect": "spam",
+    "row": {
+      "id": "thread-f:1806400000000000009",
+      "senderName": "Silvia Tornatore | LeadBoost",
+      "senderAddress": "silvia.tornatore@leadboost-growth.io",
+      "subject": "2 minuti per parlare di lead generation?",
+      "snippet": "Ho visto il tuo profilo e credo che potremmo portarti 40 lead qualificati al mese. Ti va una call di 15 minuti questa settimana? Ho disponibilita' giovedi'.",
+      "hasAttachment": false,
+      "otherSendersCount": 0
+    }
+  },
+  {
+    "name": "amazon-spedizione",
+    "expect": "ok",
+    "row": {
+      "id": "thread-f:1806400000000000010",
+      "senderName": "Amazon.it",
+      "senderAddress": "spedizione-tracciamento@amazon.it",
+      "subject": "Il tuo ordine 405-7719833-2210714 è stato spedito",
+      "snippet": "Consegna prevista domani, lunedì 21 settembre. Contiene: Cavo USB-C 2 m, nero. Segui la spedizione dalla sezione I miei ordini.",
+      "hasAttachment": false,
+      "otherSendersCount": 0
+    }
+  },
+  {
+    "name": "google-alert-reale",
+    "expect": "ok",
+    "row": {
+      "id": "thread-f:1806400000000000011",
+      "senderName": "Google",
+      "senderAddress": "no-reply@accounts.google.com",
+      "subject": "Avviso di sicurezza: nuovo accesso su Windows",
+      "snippet": "Il tuo account Google è stato utilizzato per accedere da un nuovo dispositivo Windows. Se sei stato tu non devi fare nulla. Controlla l'attività.",
+      "hasAttachment": false,
+      "otherSendersCount": 0
+    }
+  },
+  {
+    "name": "newsletter-iscritta",
+    "expect": "ok",
+    "row": {
+      "id": "thread-f:1806400000000000012",
+      "senderName": "La Cucina Italiana",
+      "senderAddress": "newsletter@lacucinaitaliana.it",
+      "subject": "Le ricette della settimana: 6 primi d'autunno",
+      "snippet": "Risotto alla zucca, pasta e fagioli, gnocchi al ragù di funghi e il trucco dello chef per una crema di porri senza panna. Buona lettura!",
+      "hasAttachment": false,
+      "otherSendersCount": 0
+    }
+  },
+  {
+    "name": "messaggio-amico",
+    "expect": "ok",
+    "row": {
+      "id": "thread-f:1806400000000000013",
+      "senderName": "Giulia Pavan",
+      "senderAddress": "giulia.pavan88@gmail.com",
+      "subject": "Re: cena di sabato",
+      "snippet": "Per me va benissimo alle 20:30. Porto io il dolce, tu pensa al vino. Ti mando la posizione del locale appena confermano la prenotazione.",
+      "hasAttachment": false,
+      "otherSendersCount": 1
+    }
+  },
+  {
+    "name": "lavoro-con-allegato",
+    "expect": "ok",
+    "row": {
+      "id": "thread-f:1806400000000000014",
+      "senderName": "Davide Cenci",
+      "senderAddress": "davide.cenci@studiocenci.it",
+      "subject": "Re: preventivo impianto - revisione 3",
+      "snippet": "Ciao, in allegato la revisione con le modifiche che ci siamo detti al telefono. Fammi sapere se i tempi di consegna ti tornano e procediamo.",
+      "hasAttachment": true,
+      "otherSendersCount": 2
+    }
+  },
+  {
+    "name": "intesa-accesso-reale",
+    "expect": "ok",
+    "row": {
+      "id": "thread-f:1806400000000000015",
+      "senderName": "Intesa Sanpaolo",
+      "senderAddress": "no-reply@intesasanpaolo.com",
+      "subject": "Nuovo accesso all'App Intesa Sanpaolo Mobile",
+      "snippet": "Hai effettuato l'accesso da un nuovo dispositivo il 19/09 alle 18:42. Se non sei stato tu, blocca l'accesso dall'app o chiama il numero verde.",
+      "hasAttachment": false,
+      "otherSendersCount": 0
+    }
+  },
+  {
+    "name": "promo-negozio-noto",
+    "expect": "ok",
+    "row": {
+      "id": "thread-f:1806400000000000016",
+      "senderName": "Decathlon Italia",
+      "senderAddress": "newsletter@news.decathlon.it",
+      "subject": "-30% su running e trail, solo fino a domenica",
+      "snippet": "Le scarpe che hai guardato sono in promozione. Ritiro gratis in negozio e reso entro 30 giorni.",
+      "hasAttachment": false,
+      "otherSendersCount": 0
+    }
+  },
+  {
+    "name": "poste-senza-indirizzo",
+    "expect": "ok",
+    "row": {
+      "id": "thread-f:1806400000000000017",
+      "senderName": "Poste Italiane",
+      "senderAddress": "",
+      "subject": "La tua spedizione e' in consegna oggi",
+      "snippet": "Il pacco SDA 0012994411 sara' consegnato entro le 18. Puoi seguire la spedizione dall'app.",
+      "hasAttachment": false,
+      "otherSendersCount": 0
+    }
+  },
+  {
+    "name": "agenzia-entrate-reale",
+    "expect": "ok",
+    "row": {
+      "id": "thread-f:1806400000000000018",
+      "senderName": "Agenzia delle Entrate",
+      "senderAddress": "no-reply@agenziaentrate.gov.it",
+      "subject": "Rimborso IRPEF: accredito disposto",
+      "snippet": "Il rimborso di 738,42 euro relativo alla dichiarazione 2025 è stato disposto e sarà accreditato sull'IBAN già registrato nel cassetto fiscale. Non è richiesta alcuna operazione.",
+      "hasAttachment": false,
+      "otherSendersCount": 0
+    }
+  },
+  {
+    "name": "brt-consegna-reale",
+    "expect": "ok",
+    "row": {
+      "id": "thread-f:1806400000000000019",
+      "senderName": "BRT Corriere Espresso",
+      "senderAddress": "no-reply@brt.it",
+      "subject": "La spedizione 0412998765 e' in consegna oggi",
+      "snippet": "Il corriere consegnera' oggi tra le 9 e le 13. Da MyBRT puoi seguire il pacco o spostare la consegna a un altro giorno, senza costi.",
+      "hasAttachment": false,
+      "otherSendersCount": 0
+    }
+  },
+  {
+    "name": "recruiter-reale",
+    "expect": "ok",
+    "row": {
+      "id": "thread-f:1806400000000000020",
+      "senderName": "Chiara Bellini | Randstad",
+      "senderAddress": "chiara.bellini@randstad.it",
+      "subject": "Posizione di sistemista Linux a Padova",
+      "snippet": "Ho visto il tuo profilo e sto cercando un sistemista per un cliente della zona di Padova, contratto a tempo indeterminato. Se ti interessa ti mando la descrizione completa.",
+      "hasAttachment": false,
+      "otherSendersCount": 0
+    }
+  },
+  {
+    "name": "condominio-assemblea",
+    "expect": "ok",
+    "row": {
+      "id": "thread-f:1806400000000000021",
+      "senderName": "Studio Bertoldi Amministrazioni",
+      "senderAddress": "amministrazione@studiobertoldi.it",
+      "subject": "Convocazione assemblea ordinaria del 14 ottobre",
+      "snippet": "In allegato la convocazione e il consuntivo. Ricordo che la terza rata condominiale va versata entro il 31/10 sull'IBAN indicato nel riparto.",
+      "hasAttachment": true,
+      "otherSendersCount": 0
+    }
+  },
+  {
+    "name": "promo-iscritta-senza-indirizzo",
+    "expect": "ok",
+    "row": {
+      "id": "thread-f:1806400000000000031",
+      "senderName": "Esselunga",
+      "senderAddress": "",
+      "subject": "I tuoi buoni sconto di settembre sono disponibili",
+      "snippet": "Trovi 5 buoni dedicati a te nella sezione Offerte della app. Validi nei punti vendita fino al 30/09.",
+      "hasAttachment": false,
+      "otherSendersCount": 0
+    }
+  }
+]

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <title>JevGuard</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <!-- Every node below is static: popup.js only flips hidden/disabled/textContent,
+         it never rebuilds the markup (a rebuild would wipe a half-typed API key). -->
+    <header class="header">
+      <h1 class="title">JevGuard</h1>
+      <p class="claim">Rischio spam/phishing con TypeSafe Jev</p>
+    </header>
+
+    <div class="strip" id="error-strip" role="alert" hidden>
+      <span class="strip-text" id="error-text"></span>
+      <button class="strip-close" id="error-dismiss" type="button" title="Chiudi" aria-label="Chiudi l'avviso">&#215;</button>
+    </div>
+
+    <section class="section">
+      <label class="switch" for="enabled-toggle">
+        <input class="switch-input" id="enabled-toggle" type="checkbox" disabled />
+        <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+        <span class="switch-text">Analisi attiva (solo per questa sessione)</span>
+      </label>
+      <p class="hint">Si disattiva da sola quando chiudi Chrome.</p>
+      <p class="state">
+        <span class="dot dot-off" id="state-dot"></span>
+        <span id="state-text">Disattivata</span>
+      </p>
+      <p class="hint hint-warn" id="need-key" hidden>Salva prima una API key per attivare l'analisi.</p>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">API key TypeSafe</h2>
+      <div class="key-row">
+        <input
+          class="input"
+          id="key-input"
+          type="password"
+          placeholder="Incolla la tua API key TypeSafe"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+        />
+        <span class="key-mask" id="key-mask" hidden>&#8226;&#8226;&#8226;&#8226; salvata</span>
+        <button class="linkbtn" id="key-change" type="button" hidden>Cambia</button>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" id="key-save" type="button">Salva</button>
+        <button class="btn" id="key-verify" type="button">Verifica</button>
+        <button class="linkbtn" id="key-cancel" type="button" hidden>Annulla</button>
+      </div>
+      <p class="msg" id="key-msg" hidden></p>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">Statistiche</h2>
+      <!-- First block: the Gmail tab that reported last (PAGE_STATS).
+           Second block: the whole session (service worker counters), so that
+           "Token input" / "Analisi riuscite" is a token-per-mail the user can check.
+           Failed calls are counted in page.errors, not here: they cost requests but no tokens. -->
+      <dl class="stats">
+        <div class="stat"><dt>Righe rilevate</dt><dd id="stat-rows">&#8211;</dd></div>
+        <div class="stat"><dt>Con verdetto</dt><dd id="stat-rendered">&#8211;</dd></div>
+        <div class="stat"><dt>In attesa</dt><dd id="stat-pending">&#8211;</dd></div>
+        <div class="stat"><dt>Errori</dt><dd id="stat-errors">&#8211;</dd></div>
+        <div class="stat stat-sep"><dt>Analisi riuscite</dt><dd id="stat-calls">&#8211;</dd></div>
+        <div class="stat"><dt>Token input</dt><dd id="stat-tokens">&#8211;</dd></div>
+        <div class="stat"><dt>Costo stimato</dt><dd id="stat-cost">&#8776; $0,0000</dd></div>
+      </dl>
+      <p class="hint">Le prime quattro voci sono la scheda Gmail aperta, le altre l'intera sessione.</p>
+    </section>
+
+    <footer class="footer">
+      <div class="actions">
+        <button class="btn btn-ghost" id="clear-cache" type="button">Svuota cache</button>
+      </div>
+      <p class="msg" id="cache-msg" hidden></p>
+      <p class="note">Escono dal browser solo mittente (nome, indirizzo e dominio), oggetto e anteprima — mai il corpo del messaggio.</p>
+    </footer>
+
+    <script src="popup.js" defer></script>
+  </body>
+</html>

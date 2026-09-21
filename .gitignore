@@ -1,0 +1,12 @@
+# Credenziali: la API key TypeSafe non deve mai finire nel repo
+.env
+.env.*
+!.env.example
+
+# Node (il progetto non ha dipendenze, ma per sicurezza)
+node_modules/
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+*.swp

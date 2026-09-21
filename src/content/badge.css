@@ -1,0 +1,181 @@
+/*
+ * JevGuard — badge styles.
+ *
+ * Every selector is prefixed with `jg-`; no Gmail class is ever styled directly.
+ * The only rule that touches a Gmail element is the padding on `.jg-anchor`, the
+ * marker class inject.js stamps on the subject cell so the snippet cannot run
+ * under the badge. The badge never changes Gmail's row height: in overlay mode it
+ * is absolutely positioned and vertically centred inside that cell.
+ *
+ * The hue is written inline by inject.js as `--jg-h` (0 = red ... 120 = green);
+ * lightness lives here so a light/dark theme flip needs no re-render.
+ */
+
+.jg-badge {
+  --jg-h: 0;      /* set inline per verdict */
+  --jg-l: 42%;    /* bar lightness  (light theme) */
+  --jg-tl: 30%;   /* text lightness (light theme) */
+  --jg-track: rgba(60, 64, 67, 0.18);
+  --jg-muted: rgba(60, 64, 67, 0.55);
+
+  box-sizing: border-box;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 1px;
+  width: 54px;
+  min-width: 54px;
+  margin: 0;
+  padding: 0;
+  line-height: 1;
+  font-weight: 400;
+  font-size: 11px;
+  text-align: right;
+  /* The badge must not swallow clicks on the Gmail row ... */
+  pointer-events: none;
+}
+
+/* ... but the tooltip needs a hover target, and `title` resolves to the nearest
+   ancestor that carries it, so re-enable hit testing on the children only. */
+.jg-badge > * {
+  pointer-events: auto;
+}
+
+/* ---- overlay mode: anchored inside the subject cell, flush right ---- */
+
+/* Gmail's own stylesheets load AFTER this one, so a Gmail rule of equal or higher
+   specificity declaring `position` on the subject cell would win and the absolutely
+   positioned badge would resolve against the row instead, landing on the date under
+   Gmail's hover icons. Both declarations are therefore non-negotiable. */
+.jg-anchor {
+  position: relative !important;
+  padding-right: 62px !important;
+}
+
+.jg-anchor > .jg-badge {
+  position: absolute !important;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  z-index: 3;
+}
+
+/* ---- append-cell mode: a real last cell of the row ---- */
+
+.jg-cell {
+  width: 62px;
+  padding: 0 6px 0 0;
+  text-align: right;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.jg-cell .jg-badge {
+  position: static;
+  transform: none;
+}
+
+/* ---- bar + percentage ---- */
+
+.jg-bar {
+  /* not inherited from .jg-badge: without it the 3px error border makes the bar
+     wider than the badge and it overflows toward the date column. */
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--jg-track);
+  overflow: hidden;
+}
+
+.jg-bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 3px;
+  font-style: normal;
+  background: hsl(var(--jg-h) 70% var(--jg-l));
+  transition: width 0.18s ease;
+}
+
+.jg-pct {
+  display: block;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: 0.2px;
+  color: hsl(var(--jg-h) 55% var(--jg-tl));
+}
+
+/* ---- waiting for a verdict ---- */
+
+.jg-pending .jg-bar i {
+  width: 100%;
+  background: var(--jg-muted);
+  animation: jg-pulse 1.1s ease-in-out infinite;
+}
+
+.jg-pending .jg-pct {
+  color: var(--jg-muted);
+}
+
+@keyframes jg-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jg-pending .jg-bar i {
+    animation: none;
+    opacity: 0.55;
+  }
+}
+
+/* ---- error ---- */
+
+.jg-error .jg-bar {
+  border-left: 3px solid #d93025;
+  background: var(--jg-track);
+}
+
+.jg-error .jg-bar i {
+  width: 0;
+  background: transparent;
+  animation: none;
+}
+
+.jg-error .jg-pct {
+  color: #c5221f;
+  font-weight: 600;
+}
+
+/* ---- dark Gmail theme (class set on <html> by inject.js) ---- */
+
+.jg-dark .jg-badge {
+  --jg-l: 52%;
+  --jg-tl: 72%;
+  --jg-track: rgba(232, 234, 237, 0.2);
+  --jg-muted: rgba(232, 234, 237, 0.55);
+}
+
+.jg-dark .jg-error .jg-bar {
+  border-left-color: #f28b82;
+}
+
+.jg-dark .jg-error .jg-pct {
+  color: #f28b82;
+}
+
+/* ---- debug outline, added by window.JevGuard.debug() for 3 s ---- */
+
+.jg-debug {
+  outline: 2px dashed magenta !important;
+  outline-offset: -2px;
+}

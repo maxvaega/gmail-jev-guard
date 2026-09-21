@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "JevGuard — spam & phishing meter per Gmail",
+  "version": "0.1.0",
+  "description": "Mostra in ogni riga di Gmail la probabilità che il messaggio sia spam o phishing, calcolata da TypeSafe Jev.",
+  "minimum_chrome_version": "116",
+  "permissions": ["storage"],
+  "host_permissions": ["https://api.typesafe.ai/*"],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "JevGuard",
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*"],
+      "js": ["src/content/gmail-rows.js", "src/content/inject.js"],
+      "css": ["src/content/badge.css"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}
