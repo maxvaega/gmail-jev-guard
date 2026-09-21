@@ -1,124 +1,202 @@
 # JevGuard
 
-Estensione Chrome (MV3) che mostra, dentro ogni riga della lista di Gmail, quanto quel
-messaggio sembra spam o phishing. Il punteggio arriva da **Jev** (TypeSafe System One),
-non da euristiche locali.
+Chrome extension (MV3) that shows, inside every row of the Gmail list, how much that
+message looks like spam or phishing. The score comes from **Jev** (TypeSafe System One),
+not from local heuristics.
 
-## 1. Cosa fa
+> **The code and this README are in English; every user-visible string in the extension is
+> Italian by design** (see `CONTRACT.md`). Throughout this document the UI labels are quoted
+> as they appear on screen, with an English gloss — e.g. *Analisi attiva* ("Analysis on").
 
-Mentre scorri la posta, JevGuard legge dalla riga solo quello che Gmail già mostra
-(mittente — nome, indirizzo e dominio —, oggetto, anteprima), lo manda a Jev come sei
-domande booleane calibrate e dipinge nella riga una barretta colorata con la percentuale
-di rischio. Niente apertura del messaggio, niente lettura del corpo, niente scansione
-della casella: solo le righe che hai davvero sotto gli occhi.
+## 1. What it does
+
+While you scroll through your mail, JevGuard reads from the row only what Gmail already
+shows (sender — display name, address and domain —, subject, preview), sends it to Jev as
+six calibrated boolean questions and paints a coloured bar with the risk percentage inside
+the row. No message is opened, no body is read, no mailbox is scanned: only the rows you
+actually have in front of you.
 
 ```
-riga Gmail → mittente / oggetto / anteprima → Jev (1 richiesta) → barra colorata + %
+Gmail row → sender / subject / preview → Jev (1 request) → coloured bar + %
 ```
 
-**Cosa non analizza mai**: le viste in cui la riga mostra il *destinatario* e non il
-mittente — **Inviati, Bozze, Programmati, In uscita, Modelli**. Lì `span[email]` è la
-persona a cui stai scrivendo: giudicare quelle righe significherebbe far valutare a Jev
-la tua stessa posta in uscita come se arrivasse dal dominio del destinatario, pagando
-una chiamata per ognuna. `listRows()` in `src/content/gmail-rows.js` restituisce zero
-righe quando l'hash della pagina è una di quelle viste; tornando in Posta in arrivo il
-rescan su `hashchange` riaccende tutto da solo.
+**What it never analyses**: the views where the row shows the *recipient* instead of the
+sender — **Sent, Drafts, Scheduled, Outbox, Templates**. There `span[email]` is the person
+you are writing to: judging those rows would mean having Jev evaluate your own outgoing mail
+as if it came from the recipient's domain, paying for one call each. `listRows()` in
+`src/content/gmail-rows.js` returns zero rows when the page hash is one of those views; going
+back to the Inbox, the rescan on `hashchange` switches everything back on by itself.
 
-## 2. Installazione
+## 2. From source to a working extension (developer mode)
 
-Non c'è niente da compilare e niente da installare: il `package.json` non dichiara
-dipendenze e non ha uno step di build (serve solo a marcare i sorgenti `src/*.js` come
-ESM per Node — vedi §4). Nessun `npm install`.
+Nothing to compile and nothing to install: `package.json` declares no dependencies and has no
+build step (it only marks the `src/*.js` sources as ESM for Node — see §4). No `npm install`.
 
-1. Se `icons/` è vuota, genera le icone: `node tools/make-icons.mjs`
-   (senza i tre PNG referenziati dal manifest Chrome rifiuta di caricare l'estensione).
-2. Apri `chrome://extensions` (serve Chrome ≥ 116).
-3. Attiva **Modalità sviluppatore** (in alto a destra).
-4. **Carica estensione non pacchettizzata** → seleziona la cartella `gmail-jev-guard/`.
-5. **Ricarica la tab di Gmail.** I content script non entrano nelle tab già aperte:
-   vale a ogni installazione e a ogni "Ricarica" dell'estensione.
-6. Apri il popup dalla toolbar, incolla la **API key** di typesafe.ai, **Salva**.
-   Il pulsante **Verifica** fa una `GET /v1/models`: conferma la chiave senza consumare token.
-7. Accendi **Analisi attiva**. Il badge della toolbar diventa `ON`.
+### 2.1 Prerequisites
 
-**Comportamento della sessione (voluto, non è un bug):**
-
-| cosa | dove vive | sopravvive alla chiusura di Chrome |
-|---|---|---|
-| API key | `chrome.storage.local` | sì |
-| interruttore "Analisi attiva" | `chrome.storage.session` | **no — riparte sempre OFF** |
-| verdetti in cache, statistiche | `chrome.storage.session` | no |
-
-Cioè: la chiave la inserisci una volta sola, l'analisi la riaccendi tu a ogni nuovo avvio
-del browser. È la garanzia che l'estensione non chiami mai l'API a tua insaputa.
-
-## 3. Come si legge l'indicatore
-
-Barretta da ~54 px: 6 px di barra + la percentuale in 11 px. Non cambia mai l'altezza della riga.
-
-- **Percentuale** = `max(probabilità spam, probabilità phishing)`, arrotondata.
-- **Colore**: rampa continua verde → rosso, `hsl(120 → 0, 70%, 42%)`. Su tema scuro Gmail,
-  `<html>` prende la classe `.jg-dark` e cambia solo la luminosità.
-- **Fasce** (`RISK_BANDS` in `src/jev.js`):
-
-| fascia | valore | lettura |
-|---|---|---|
-| basso | < 35 % | verde/giallo — nulla da fare |
-| sospetto | 35 – 64 % | ambra — guarda mittente e link prima di cliccare |
-| alto | ≥ 65 % | rosso — trattalo come ostile |
-
-Le soglie si applicano al valore non arrotondato: una barra che mostra "65 %" può essere
-ancora `sospetto` (0,647).
-
-- **Tooltip** (`title` della barra), quattro blocchi nell'ordine:
-  1. riga di sintesi — "Rischio phishing 87 % (alto)" / "Probabile spam …" / "Rischio …";
-  2. `spam NN% · phishing NN%  (la % mostrata è la maggiore delle due)`;
-  3. una riga `• <segnale>: NN%` per ogni segnale esplicativo **≥ 40 %** (i quattro segnali
-     vengono sempre calcolati, in tooltip compaiono solo quelli che contano davvero);
-  4. sempre, la riga di chiusura sull'origine del giudizio:
-     `Valutato da TypeSafe Jev su mittente (nome, indirizzo e dominio), oggetto e anteprima.`
-- **Stati transitori**: barra grigia pulsante = analisi in corso; barra grigia con `!` =
-  errore. Il tooltip d'errore è `Analisi non riuscita: <motivo in italiano> [CODICE]`
-  (con `NO_KEY` segue una seconda riga che rimanda al popup): il codice tra parentesi
-  quadre è quello che ritrovi nella tabella di §9.
-
-**Posizione**: la barra è posizionata in absolute dentro la cella dell'oggetto, allineata a
-destra → sta subito a sinistra della colonna data e le icone che Gmail mostra all'hover non
-la coprono. Se preferisci una colonna vera in più, cambia l'unica costante
-`BADGE_PLACEMENT = "overlay"` → `"append-cell"`, in testa a `src/content/inject.js`.
-
-## 4. Come funziona dentro
-
-### Mappa dei file
-
-| file | ruolo |
+| | |
 |---|---|
-| `manifest.json` | MV3. Permessi: solo `storage` + host `https://api.typesafe.ai/*`. Nessun `tabs`, nessun `activeTab`. |
-| `package.json` | Nessuna dipendenza, nessuna build. Serve solo per `"type": "module"`, così Node legge `src/jev.js` e `src/typesafe-client.js` come ESM anche prima di Node 20.19 (più due scorciatoie: `npm run icons`, `npm run calibrate`). |
-| `src/jev.js` | ESM. `JEV_MODEL`, `QUESTIONS` (i 6 Noul), `buildState`, `scoreAnswers`, `RISK_BANDS`/`riskLevel`, `riskColor`, `SIGNAL_LABELS`, `senderDomain`, `verdictTooltip`. Zero `chrome.*`: gira anche in Node. |
-| `src/typesafe-client.js` | ESM. `systemOne()`, `listModels()`, `TypeSafeError`, `italianMessage()`, `inputTokensOf()` (unico lettore tollerante del conteggio token, condiviso con il test). Timeout 20 s, 3 retry con backoff esponenziale che rispetta `retry-after`. |
-| `src/background.js` | Service worker (module). Cache, coda, chiamate a Jev, storage, badge toolbar. |
-| `src/content/gmail-rows.js` | Classic script. Il file che conosce il markup di **riga** di Gmail (`listRows`, `extractRow`, `subjectCell`) e le viste da saltare; l'unico altro selettore Gmail del progetto è `MAIN_SELECTOR` in `inject.js`. |
-| `src/content/inject.js` | Classic script. `MAIN_SELECTOR`, observer, batching, disegno dei badge, `window.JevGuard.debug()/rescan()`. |
-| `src/content/badge.css` | Stile della barra, stati `jg-pending` / `jg-error`, variante `.jg-dark`. |
-| `src/popup/*` | Chiave API, interruttore, statistiche live (pagina + sessione), costo stimato, svuota cache. |
-| `tools/make-icons.mjs` | Genera i 3 PNG in `icons/`. |
-| `tools/fixtures.json` | Email di esempio per la calibrazione. |
-| `tools/contract-test.mjs` | Test contro l'API reale (serve la chiave). |
+| **Chrome ≥ 116** | `minimum_chrome_version` in the manifest. Any Chromium-based browser with MV3 and `chrome.storage.session` works (Edge, Brave). |
+| **Git** | Only to clone. You can also download the ZIP from GitHub and unpack it. |
+| **A TypeSafe API key** | Create one in the console: <https://console.typesafe.ai/keys> (quick start: <https://docs.typesafe.ai/introduction/quickstart>). The extension is useless without it: every score comes from the API. |
+| **Node.js ≥ 18** *(optional)* | Only for `tools/` — the calibration harness and the icon generator. `src/typesafe-client.js` falls back to `globalThis.fetch`, which needs Node 18 or newer. Not needed to run the extension. |
 
-I content script **non sono moduli** (non possono importare `jev.js`): `inject.js` ricalcola
-in proprio tooltip e colore rispecchiando `verdictTooltip()` e `riskColor()`.
-**Se tocchi quelle due funzioni, aggiorna anche `inject.js`.**
+### 2.2 Get the code
 
-### Protocollo dei messaggi
+```bash
+git clone https://github.com/maxvaega/gmail-jev-guard.git
+cd gmail-jev-guard
+```
 
-Content script e popup parlano col service worker solo con `chrome.runtime.sendMessage`;
-il SW risponde sempre (nessuna porta, nessuna connessione persistente).
+**The cloned directory is the extension folder**: it contains `manifest.json` at its root,
+and that is exactly the folder you point Chrome at in the next step. Nothing to move around.
 
-| `type` | payload | risposta |
+The three PNG icons are committed, so there is no generation step after a clone. If `icons/`
+is ever empty (or you want to redraw them), run `node tools/make-icons.mjs` — without the
+three PNGs referenced by the manifest, Chrome refuses to load the extension.
+
+### 2.3 Load it in Chrome
+
+1. Open `chrome://extensions`.
+2. Turn on **Developer mode** (toggle in the top-right corner).
+3. Click **Load unpacked** and select the folder containing `manifest.json` (the directory
+   you cloned).
+4. The JevGuard card appears in the list. Optionally click the puzzle-piece icon in the
+   toolbar and pin JevGuard, so the popup is one click away.
+5. **Reload your Gmail tab.** Content scripts do not enter tabs that are already open: this
+   applies to every install and to every "Reload" of the extension.
+
+### 2.4 Configure the key and switch the analysis on
+
+Open the popup from the toolbar:
+
+1. Paste your **TypeSafe API key** into the field and press **Salva** ("Save").
+2. Press **Verifica** ("Verify"): it performs a `GET /v1/models` — it confirms the key
+   without spending tokens. On success it lists the models.
+3. Tick **Analisi attiva (solo per questa sessione)** ("Analysis on, this session only").
+   The toolbar badge turns into `ON`.
+
+**Session behaviour (intentional, not a bug):**
+
+| what | where it lives | survives closing Chrome |
+|---|---|---|
+| API key | `chrome.storage.local` | yes |
+| "Analisi attiva" switch | `chrome.storage.session` | **no — it always starts OFF** |
+| cached verdicts, statistics | `chrome.storage.session` | no |
+
+In other words: you enter the key once, and you turn the analysis back on yourself at every
+new browser start. That is the guarantee that the extension never calls the API behind your back.
+
+### 2.5 Check that it works
+
+Go to the Inbox and scroll. Within a moment each visible row gets a grey pulsing bar (analysis
+in progress) that turns into a coloured bar with a percentage (§3).
+
+If nothing appears, open the Gmail console (F12) and run:
+
+```js
+window.JevGuard.debug()
+```
+
+It prints the extension's state and draws a dashed magenta outline for 3 seconds around every
+row it recognised. What to look at:
+
+| field | expected | if not |
+|---|---|---|
+| `enabled` | `true` | switch the toggle on in the popup (it restarts OFF at every Chrome start) |
+| `mainFound` | `true` | update `MAIN_SELECTOR` in `src/content/inject.js` |
+| `detectedRows` | > 0 | update `ROW_SELECTORS` / `SUBJECT_CELL_SELECTOR` in `src/content/gmail-rows.js` |
+| `firstRow` | a filled `RowData` | an empty `senderAddress` means only sender extraction broke |
+
+If `window.JevGuard` does not even exist, the content scripts never ran: check the errors on
+the extension card. The full symptom table is in §9.
+
+### 2.6 The development loop
+
+After **any** change to the source:
+
+1. `chrome://extensions` → the **reload** (↻) icon on the JevGuard card.
+2. **Reload the Gmail tab** — again, content scripts do not re-enter open tabs.
+3. Open the popup and check the toggle: if *Analisi attiva* came back off, turn it on again.
+
+Where errors surface:
+
+- **Extension card** → the **Errors** button, for manifest and load-time problems.
+- **Page console** (F12 on Gmail) → the content scripts (`src/content/*.js`), all their lines
+  are prefixed with `[JevGuard]`.
+- **Service worker console** → `chrome://extensions` → JevGuard → *Inspect views: service
+  worker*, for `src/background.js`: API calls, queue, cache, storage.
+
+To uninstall, press **Remove** on the card. That also wipes `chrome.storage.local`, i.e. the
+saved API key.
+
+## 3. Reading the indicator
+
+A ~54 px bar: 6 px of bar plus the percentage in 11 px type. It never changes the row height.
+
+- **Percentage** = `max(spam probability, phishing probability)`, rounded.
+- **Colour**: continuous green → red ramp, `hsl(120 → 0, 70%, 42%)`. On Gmail's dark theme,
+  `<html>` gets the `.jg-dark` class and only the lightness changes.
+- **Bands** (`RISK_BANDS` in `src/jev.js`):
+
+| band | value | how to read it |
+|---|---|---|
+| low (*basso*) | < 35 % | green/yellow — nothing to do |
+| suspicious (*sospetto*) | 35 – 64 % | amber — check sender and links before clicking |
+| high (*alto*) | ≥ 65 % | red — treat it as hostile |
+
+The thresholds apply to the unrounded value: a bar showing "65 %" may still be `sospetto` (0.647).
+
+- **Tooltip** (the bar's `title`), four blocks in this order:
+  1. summary line — "Rischio phishing 87 % (alto)" / "Probabile spam …" / "Rischio …";
+  2. `spam NN% · phishing NN%  (la % mostrata è la maggiore delle due)` — the percentage shown
+     is the larger of the two;
+  3. one `• <signal>: NN%` line for every explanatory signal **≥ 40 %** (all four signals are
+     always computed, only the ones that actually matter show up in the tooltip);
+  4. always, the closing line about where the judgement comes from:
+     `Valutato da TypeSafe Jev su mittente (nome, indirizzo e dominio), oggetto e anteprima.`
+- **Transient states**: pulsing grey bar = analysis in progress; grey bar with `!` = error. The
+  error tooltip is `Analisi non riuscita: <reason in Italian> [CODE]` (with `NO_KEY` a second
+  line points you to the popup): the code in square brackets is the one you find in the table
+  in §9.
+
+**Position**: the bar is absolutely positioned inside the subject cell, right-aligned → it sits
+just left of the date column, and the icons Gmail shows on hover do not cover it. If you prefer
+a real extra column, flip the single constant `BADGE_PLACEMENT = "overlay"` → `"append-cell"`
+at the top of `src/content/inject.js`.
+
+## 4. How it works inside
+
+### File map
+
+| file | role |
+|---|---|
+| `manifest.json` | MV3. Permissions: only `storage` + host `https://api.typesafe.ai/*`. No `tabs`, no `activeTab`. |
+| `package.json` | No dependencies, no build. It exists only for `"type": "module"`, so Node reads `src/jev.js` and `src/typesafe-client.js` as ESM even before Node 20.19 (plus two shortcuts: `npm run icons`, `npm run calibrate`). |
+| `src/jev.js` | ESM. `JEV_MODEL`, `QUESTIONS` (the 6 Nouls), `buildState`, `scoreAnswers`, `RISK_BANDS`/`riskLevel`, `riskColor`, `SIGNAL_LABELS`, `senderDomain`, `verdictTooltip`. Zero `chrome.*`: it also runs in Node. |
+| `src/typesafe-client.js` | ESM. `systemOne()`, `listModels()`, `TypeSafeError`, `italianMessage()`, `inputTokensOf()` (the single tolerant reader of the token count, shared with the test). 20 s timeout, 3 retries with exponential backoff that honours `retry-after`. |
+| `src/background.js` | Service worker (module). Cache, queue, calls to Jev, storage, toolbar badge. |
+| `src/content/gmail-rows.js` | Classic script. The file that knows Gmail's **row** markup (`listRows`, `extractRow`, `subjectCell`) and the views to skip; the only other Gmail selector in the project is `MAIN_SELECTOR` in `inject.js`. |
+| `src/content/inject.js` | Classic script. `MAIN_SELECTOR`, observers, batching, badge painting, `window.JevGuard.debug()/rescan()`. |
+| `src/content/badge.css` | Bar styling, `jg-pending` / `jg-error` states, `.jg-dark` variant. |
+| `src/popup/*` | API key, switch, live statistics (page + session), estimated cost, clear cache. |
+| `tools/make-icons.mjs` | Generates the 3 PNGs in `icons/`. |
+| `tools/fixtures.json` | Sample emails for calibration. |
+| `tools/contract-test.mjs` | Test against the real API (needs the key). |
+
+The content scripts **are not modules** (they cannot import `jev.js`): `inject.js` recomputes
+the tooltip and the colour on its own, mirroring `verdictTooltip()` and `riskColor()`.
+**If you touch those two functions, update `inject.js` as well.**
+
+### Message protocol
+
+Content scripts and popup talk to the service worker only through `chrome.runtime.sendMessage`;
+the SW always answers (no port, no persistent connection).
+
+| `type` | payload | answer |
 |---|---|---|
 | `ANALYZE` | `{ items: RowData[] }` (max 5) | `{ ok, verdicts[] }` |
-| `GET_CACHED` | `{ ids: string[] }` | `{ ok, verdicts[] }` (solo i noti) |
+| `GET_CACHED` | `{ ids: string[] }` | `{ ok, verdicts[] }` (known ones only) |
 | `GET_STATUS` | `{}` | `{ ok, enabled, hasKey, stats, lastError }` |
 | `SET_ENABLED` | `{ enabled }` | `{ ok, enabled }` |
 | `SET_KEY` | `{ key }` | `{ ok }` |
@@ -129,163 +207,168 @@ il SW risponde sempre (nessuna porta, nessuna connessione persistente).
 `RowData` = `{ id, senderName, senderAddress, subject, snippet, hasAttachment, otherSendersCount }`.
 `Verdict` = `{ id, risk, kind, level, phishing, spam, signals[], inputTokens, model, ts, error }`.
 
-### Ciclo di lavoro
+### Work cycle
 
-- **Lazy sul viewport**: un `IntersectionObserver` (margine 200 px) segna le righe visibili;
-  un `MutationObserver` su `div[role="main"]` più l'evento `hashchange` (debounce 300 ms)
-  reggono la navigazione single-page di Gmail. Nelle viste destinatario (Inviati, Bozze,
-  Programmati, In uscita, Modelli — §1) non c'è nessuna riga da analizzare per definizione.
-- **Cache per sessione**: i verdetti sono indicizzati per `RowData.id` — il thread id di
-  Gmail quando la riga lo espone, altrimenti un hash del contenuto della riga. Una riga
-  già vista si ridisegna istantaneamente e non viene mai rimandata a Jev. Tetto 500 verdetti,
-  si scartano i più vecchi per timestamp; tutto muore alla chiusura di Chrome.
-- **Batch e concorrenza**: `inject.js` raggruppa le righe ignote a blocchi di 5 e li manda in
-  parallelo; il service worker esegue **al massimo 4 richieste Jev contemporanee**
-  (`MAX_CONCURRENT = 4`) e deduplica le richieste già in volo.
-- **Storage**: `local.apiKey` è leggibile solo dal service worker; `session` contiene
-  `enabled`, `verdicts`, `stats`, `page` ed è aperta ai content script tramite
-  `setAccessLevel({ accessLevel: "TRUSTED_AND_UNTRUSTED_CONTEXTS" })`, così `inject.js` legge
-  `enabled` e si iscrive a `storage.session.onChanged` senza passare dal SW.
-- **Contatori del popup**: le prime quattro voci (*Righe rilevate*, *Con verdetto*,
-  *In attesa*, *Errori*) arrivano da `PAGE_STATS` e descrivono **la scheda Gmail aperta**:
-  *Con verdetto* conta le righe attualmente dipinte con un verdetto, cache compresa, e
-  cala quando Gmail ricicla le righe. *Analisi riuscite*, *Token input* e *Costo stimato*
-  sono invece i totali **della sessione** tenuti dal service worker, quindi
-  *Token input ÷ Analisi riuscite* dà i token medi per mail (le chiamate fallite non producono token).
-- **Spegnimento**: togliendo la spunta i badge spariscono dalla pagina; riaccendendo si
-  ridisegnano dalla cache senza nuove chiamate.
+- **Lazy on the viewport**: an `IntersectionObserver` (200 px margin) marks the visible rows; a
+  `MutationObserver` on `div[role="main"]` plus the `hashchange` event (300 ms debounce) handle
+  Gmail's single-page navigation. In the recipient views (Sent, Drafts, Scheduled, Outbox,
+  Templates — §1) there is by definition no row to analyse.
+- **Per-session cache**: verdicts are indexed by `RowData.id` — Gmail's thread id when the row
+  exposes it, otherwise a hash of the row content. A row already seen is repainted instantly and
+  never sent to Jev again. Cap of 500 verdicts, oldest by timestamp are dropped; everything dies
+  when Chrome closes.
+- **Batching and concurrency**: `inject.js` groups unknown rows into blocks of 5 and sends them
+  in parallel; the service worker runs **at most 4 concurrent Jev requests** (`MAX_CONCURRENT = 4`)
+  and deduplicates requests already in flight.
+- **Storage**: `local.apiKey` is readable by the service worker only; `session` holds `enabled`,
+  `verdicts`, `stats`, `page` and is opened to the content scripts through
+  `setAccessLevel({ accessLevel: "TRUSTED_AND_UNTRUSTED_CONTEXTS" })`, so `inject.js` reads
+  `enabled` and subscribes to `storage.session.onChanged` without going through the SW.
+- **Popup counters**: the first four entries (*Righe rilevate* "rows detected", *Con verdetto*
+  "with a verdict", *In attesa* "pending", *Errori* "errors") come from `PAGE_STATS` and describe
+  **the open Gmail tab**: *Con verdetto* counts the rows currently painted with a verdict, cache
+  included, and goes down when Gmail recycles rows. *Analisi riuscite* ("successful analyses"),
+  *Token input* and *Costo stimato* ("estimated cost") are instead **session** totals kept by the
+  service worker, so *Token input ÷ Analisi riuscite* gives the average tokens per mail (failed
+  calls produce no tokens).
+- **Switching off**: unticking the box removes the badges from the page; ticking it again
+  repaints them from the cache with no new calls.
 
-## 5. Le domande a Jev
+## 5. The questions asked of Jev
 
-Una sola richiesta per mail: Jev ingerisce lo `state` una volta e valuta i sei Noul in
-parallelo (più economico e più veloce di sei chiamate).
+One single request per mail: Jev ingests the `state` once and evaluates the six Nouls in
+parallel (cheaper and faster than six calls).
 
-| Noul | domanda |
+| Noul | question |
 |---|---|
-| `is_phishing` | è un tentativo di frode: si finge qualcuno per farti dare credenziali, dati o soldi? |
-| `is_spam` | è posta commerciale massiva non richiesta: pubblicità, cold outreach, catene, spedite a una lista invece che scritte per te? |
-| `sender_identity_mismatch` | il nome visualizzato dichiara un'organizzazione che non userebbe mai quel dominio? |
-| `urgency_pressure` | mette fretta: scadenze, minacce, account o pacco in blocco? |
-| `credential_or_payment_request` | chiede di autenticarti, confermare dati, pagare o trasferire denaro? |
-| `too_good_to_be_true` | promette premi, vincite, eredità, rimborsi inattesi, rendimenti garantiti? |
+| `is_phishing` | is it a fraud attempt: impersonating someone to get your credentials, data or money? |
+| `is_spam` | is it unsolicited bulk commercial mail: ads, cold outreach, chain letters, sent to a list instead of written for you? |
+| `sender_identity_mismatch` | does the display name claim an organisation that would never use that domain? |
+| `urgency_pressure` | does it push you: deadlines, threats, an account or a parcel on hold? |
+| `credential_or_payment_request` | does it ask you to authenticate, confirm data, pay or transfer money? |
+| `too_good_to_be_true` | does it promise prizes, winnings, inheritances, unexpected refunds, guaranteed returns? |
 
-I primi due fanno la percentuale, gli altri quattro solo la spiegano nel tooltip.
-Lo `state` che accompagna le domande porta **esattamente i cinque campi che le domande
-citano** (§7): tutto il resto sarebbe rumore che costa accuratezza.
+The first two make the percentage, the other four only explain it in the tooltip.
+The `state` that travels with the questions carries **exactly the five fields the questions
+mention** (§7): everything else would be noise, and noise costs accuracy.
 
-**Perché la percentuale è un `max` e non una media pesata.** `is_phishing` e `is_spam` sono
-probabilità calibrate: "0,80" significa davvero "in 8 casi su 10 di questo tipo è vero".
-Combinarle con pesi inventati distruggerebbe quella calibrazione e produrrebbe un numero
-senza unità di misura. Il `max` invece resta interpretabile: è la peggiore delle due accuse,
-letta con la scala di chi l'ha prodotta. Inoltre spam e phishing sono categorie distinte, non
-due componenti dello stesso rischio: una mail può essere phishing puro e spam quasi zero, e
-va segnata rossa lo stesso. Il dominio del mittente, per la stessa ragione, viene estratto dal
-codice (`senderDomain()`) e non lasciato inferire al modello.
+**Why the percentage is a `max` and not a weighted average.** `is_phishing` and `is_spam` are
+calibrated probabilities: "0.80" really does mean "in 8 out of 10 cases of this kind it is true".
+Combining them with made-up weights would destroy that calibration and produce a number with no
+unit. The `max`, instead, stays interpretable: it is the worse of the two accusations, read on
+the scale of whoever produced it. Besides, spam and phishing are distinct categories, not two
+components of the same risk: a mail can be pure phishing and almost zero spam, and it must be
+flagged red all the same. The sender domain, for the same reason, is extracted by the code
+(`senderDomain()`) and not left for the model to infer.
 
-## 6. Costi e limiti
+## 6. Cost and limits
 
-- **$0,042 per milione di token di input**, output gratuito. Il popup mostra token consumati
-  e **costo stimato** in tempo reale.
-- **~1 richiesta per mail effettivamente visualizzata**, poi è in cache per tutta la sessione.
-  Ordine di grandezza, **misurato sul corpo che il client spedisce davvero**
-  (`JSON.stringify({ state, model, questions })`, `src/typesafe-client.js`): le sei domande
-  da sole pesano ~3,8 KB, con uno `state` tipico il corpo è ~4,2 KB e nel caso peggiore
-  (oggetto 300 + anteprima 600 caratteri) ~5,0 KB. Con l'euristica dei ~4 caratteri per
-  token sono **~1.000–1.250 token di input a mail**, cioè 1.000 mail ≈ 1–1,3 M token ≈
-  **$0,04–0,05**, prima di qualunque wrapping lato server.
-  **È una stima finché non la misuri**: `TYPESAFE_API_KEY=... node tools/contract-test.mjs`
-  (§8) stampa `Token di input totali`, `Costo misurato` e `Costo per email` reali,
-  restituiti dall'API. Sostituisci i numeri qui sopra con quelli appena li hai.
-- **Rate limit: 1.200 richieste/minuto.** Con il tetto di 4 richieste parallele è fuori
-  portata nell'uso normale; se lo tocchi, il client fa retry con backoff.
+- **$0.042 per million input tokens**, output free. The popup shows tokens consumed and
+  **estimated cost** in real time.
+- **~1 request per mail actually displayed**, then it is cached for the whole session. Order of
+  magnitude, **measured on the body the client really sends**
+  (`JSON.stringify({ state, model, questions })`, `src/typesafe-client.js`): the six questions
+  alone weigh ~3.8 KB, with a typical `state` the body is ~4.2 KB and in the worst case
+  (300-character subject + 600-character preview) ~5.0 KB. With the ~4-characters-per-token
+  heuristic that is **~1,000–1,250 input tokens per mail**, i.e. 1,000 mails ≈ 1–1.3 M tokens ≈
+  **$0.04–0.05**, before any server-side wrapping.
+  **It is an estimate until you measure it**: `TYPESAFE_API_KEY=... node tools/contract-test.mjs`
+  (§8) prints the real `Token di input totali`, `Costo misurato` and `Costo per email` returned
+  by the API. Replace the numbers above with those as soon as you have them.
+- **Rate limit: 1,200 requests/minute.** With the cap of 4 parallel requests it is out of reach
+  in normal use; if you hit it, the client retries with backoff.
 
-Limiti onesti:
+Honest limitations:
 
-- JevGuard vede **solo ciò che mostra la lista**: niente corpo del messaggio, niente link,
-  niente header, nessun controllo SPF/DKIM/DMARC. È un semaforo di triage, non un gateway
-  antispam: un phishing ben scritto con oggetto anonimo può risultare basso.
-- **Non copre le viste destinatario** (Inviati, Bozze, Programmati, In uscita, Modelli):
-  lì la riga mostra a chi scrivi, non chi ti scrive, quindi l'analisi è disattivata di
-  proposito (§1).
-- Jev è **primariamente inglese**: sui testi italiani le soglie vanno calibrate (vedi §8)
-  prima di fidarsi dei valori intermedi.
-- Le **classi CSS di Gmail cambiano senza preavviso**: se un giorno non vedi più barre, i
-  primi sospettati sono i selettori di riga in `gmail-rows.js` e `MAIN_SELECTOR` in
-  `inject.js` → `window.JevGuard.debug()`.
+- JevGuard sees **only what the list shows**: no message body, no links, no headers, no
+  SPF/DKIM/DMARC check. It is a triage traffic light, not an antispam gateway: a well-written
+  phishing mail with an anonymous subject can come out low.
+- **It does not cover the recipient views** (Sent, Drafts, Scheduled, Outbox, Templates): there
+  the row shows who you are writing to, not who is writing to you, so the analysis is disabled
+  on purpose (§1).
+- Jev is **primarily English**: on Italian text the thresholds need calibrating (see §8) before
+  you trust the intermediate values.
+- **Gmail's CSS class names change without notice**: if one day you see no more bars, the first
+  suspects are the row selectors in `gmail-rows.js` and `MAIN_SELECTOR` in `inject.js` →
+  `window.JevGuard.debug()`.
 
 ## 7. Privacy
 
-Per ogni riga analizzata esce dal browser **solo** questo oggetto, verso
-`https://api.typesafe.ai/v1/systemone` e nient'altro:
+For every analysed row, **only** this object leaves the browser, towards
+`https://api.typesafe.ai/v1/systemone` and nowhere else:
 
-| campo inviato | origine |
+| field sent | origin |
 |---|---|
-| `sender_display_name` | nome mittente mostrato nella riga (max 120 caratteri) |
-| `sender_address` | indirizzo mittente, se la riga lo espone (max 160 caratteri) |
-| `sender_domain` | derivato **in locale** dall'indirizzo, non dedotto dal modello |
-| `subject` | oggetto (max 300 caratteri) |
-| `preview_text` | anteprima già visibile nella lista (max 600 caratteri) |
+| `sender_display_name` | sender name shown in the row (max 120 characters) |
+| `sender_address` | sender address, if the row exposes it (max 160 characters) |
+| `sender_domain` | derived **locally** from the address, not inferred by the model |
+| `subject` | subject (max 300 characters) |
+| `preview_text` | preview already visible in the list (max 600 characters) |
 
-Cinque campi, nessun altro: sono esattamente quelli che le sei domande citano. Un campo di
-cui non si conosce il valore viene **omesso dall'oggetto**, mai spedito come segnaposto (un
-`"(non disponibile)"` al posto del dominio il modello lo leggerebbe come un dominio sbagliato).
-Unica eccezione: `preview_text` c'è sempre, al massimo come stringa vuota.
+Five fields, nothing else: exactly the ones the six questions mention. A field whose value is
+unknown is **omitted from the object**, never sent as a placeholder (a `"(non disponibile)"` in
+place of the domain would be read by the model as a wrong domain). The only exception:
+`preview_text` is always there, at worst as an empty string.
 
-**Non** escono mai: il corpo del messaggio, i link, gli header, gli allegati, l'id del thread
-(resta locale, serve solo come chiave di cache), l'indirizzo del tuo account. Restano locali
-anche `hasAttachment` e `otherSendersCount`: il content script li estrae e fanno parte di
-`RowData`, ma **non vengono inviati al modello** (nessuna delle sei domande li usa).
+What **never** leaves: the message body, the links, the headers, the attachments, the thread id
+(it stays local, it only serves as a cache key), your own account address. `hasAttachment` and
+`otherSendersCount` stay local too: the content script extracts them and they are part of
+`RowData`, but they **are not sent to the model** (none of the six questions uses them).
 
-La API key sta in `chrome.storage.local`, la legge **solo** il service worker: non viene mai
-iniettata nella pagina, non compare nel DOM di Gmail, non transita nei messaggi verso i
-content script. Nessuna telemetria, nessun endpoint di logging, nessun server terzo: le uniche
-tracce sono le righe `[JevGuard]` nella console locale.
+The API key lives in `chrome.storage.local` and **only** the service worker reads it: it is never
+injected into the page, it never appears in Gmail's DOM, it never travels in messages towards the
+content scripts. No telemetry, no logging endpoint, no third-party server: the only traces are the
+`[JevGuard]` lines in the local console.
 
-## 8. Calibrazione e test
+## 8. Calibration and testing
 
 ```bash
-cd ~/Developer/jev-gmail/gmail-jev-guard
+cd gmail-jev-guard
 TYPESAFE_API_KEY=sk-... node tools/contract-test.mjs
 ```
 
-Gira le email di `tools/fixtures.json` contro l'API reale. Sono casi italiani costruiti a
-coppie — la finta Poste e una Poste vera, la finta Intesa e un accesso reale, il finto
-rimborso dell'Agenzia delle Entrate e uno legittimo, più promozioni sollecitate, newsletter
-e posta personale — così un modello che dicesse solo "linguaggio bancario italiano =
-phishing" verrebbe subito smascherato. Stampa una tabella: una riga per fixture, con le probabilità restituite dai Noul, il rischio calcolato e
-l'esito atteso dal campo `expect` (`phishing` / `spam` / `ok`), così vedi a colpo d'occhio
-falsi positivi e falsi negativi. Usa `src/jev.js` e `src/typesafe-client.js` esatti
-dell'estensione — quello che vedi nel test è quello che vedrai in Gmail. In coda stampa
-`Token di input totali`, `Costo misurato` e `Costo per email`: sono le uniche cifre di
-costo misurate davvero, quelle con cui aggiornare la stima di §6.
+It runs the emails in `tools/fixtures.json` against the real API. They are Italian cases built in
+pairs — the fake Poste and a real Poste, the fake Intesa and a genuine login, the fake Agenzia
+delle Entrate refund and a legitimate one, plus solicited promotions, newsletters and personal
+mail — so that a model saying merely "Italian banking language = phishing" would be caught
+immediately. It prints a table: one row per fixture, with the probabilities returned by the Nouls,
+the computed risk and the outcome expected by the `expect` field (`phishing` / `spam` / `ok`), so
+you see false positives and false negatives at a glance. It uses the extension's exact `src/jev.js`
+and `src/typesafe-client.js` — what you see in the test is what you will see in Gmail. At the end it
+prints `Token di input totali`, `Costo misurato` and `Costo per email`: these are the only truly
+measured cost figures, the ones to update the estimate in §6 with.
 
-Ciclo di taratura:
+Useful flags: `--dry` (prints the request body, no network), `--limit N`, `--only <name>`.
 
-1. Aggiungi a `tools/fixtures.json` le mail che l'estensione sbaglia (anonimizzate), con il
-   loro `expect`.
-2. Correggi `QUESTIONS[<noul>].criteria.true` / `.false` in `src/jev.js`: i criteri devono
-   dire la stessa cosa nella stessa direzione delle `instructions`, e le mail italiane vanno
-   descritte con i loro pretesti tipici (SPID, Poste, Agenzia delle Entrate, corrieri).
-3. Rilancia il test, poi ricarica l'estensione da `chrome://extensions` e ricarica Gmail.
+Tuning cycle:
 
-Le soglie delle fasce stanno in `RISK_BANDS`, sempre in `src/jev.js`.
+1. Add to `tools/fixtures.json` the mails the extension gets wrong (anonymised), with their `expect`.
+2. Fix `QUESTIONS[<noul>].criteria.true` / `.false` in `src/jev.js`: the criteria must say the same
+   thing in the same direction as the `instructions`, and Italian mail has to be described with its
+   typical pretexts (SPID, Poste, Agenzia delle Entrate, couriers).
+3. Run the test again, then reload the extension from `chrome://extensions` and reload Gmail.
+
+The band thresholds live in `RISK_BANDS`, again in `src/jev.js`.
 
 ## 9. Troubleshooting
 
-Due console da tenere a mente:
-**pagina** (F12 su Gmail) per i content script, **service worker** su `chrome://extensions` →
-JevGuard → *Ispeziona visualizzazioni: service worker*.
+Two consoles to keep in mind:
+the **page** one (F12 on Gmail) for the content scripts, and the **service worker** one at
+`chrome://extensions` → JevGuard → *Inspect views: service worker*.
 
-| sintomo | cosa controllare |
+| symptom | what to check |
 |---|---|
-| **Nessuna barra** | Sei in **Inviati / Bozze / Programmati / In uscita / Modelli**? Lì l'analisi è disattivata di proposito (§1), non è un guasto. Hai ricaricato la tab di Gmail dopo aver caricato l'estensione? Poi nella console: `window.JevGuard.debug()`. `enabled: false` → accendi l'interruttore nel popup (riparte OFF a ogni avvio di Chrome). `mainFound: false` → aggiorna `MAIN_SELECTOR` in `src/content/inject.js`: è il contenitore su cui sono agganciati observer e ricerca delle righe, e se non matcha `rescan()` esce subito, quindi toccare `gmail-rows.js` non serve a niente. `mainFound: true` ma `detectedRows: 0` → aggiorna `ROW_SELECTORS` / `SUBJECT_CELL_SELECTOR` in `src/content/gmail-rows.js`. `firstRow.senderAddress: ""` → è saltata solo l'estrazione del mittente. Se `debug` non esiste, i content script non sono entrati: controlla gli errori in `chrome://extensions`. |
-| **Barre grigie pulsanti che non si fermano** | Analisi in corso o coda bloccata: guarda `pending` / `queued` in `debug()` e la console del service worker. |
-| **Barre grigie con `!`** | Passa il mouse: il tooltip dice il motivo e chiude con il codice tra parentesi quadre (`Analisi non riuscita: … [AUTH]`). Codici: `NO_KEY`, `AUTH`, `RATE_LIMIT`, `BAD_REQUEST`, `NETWORK`, `TIMEOUT`, `DISABLED`, `UNKNOWN`. Dopo aver risolto, `window.JevGuard.rescan()`: cancella i verdetti in errore e rianalizza (uno scroll normale non ritenta). |
-| **401 / `AUTH`** | Chiave sbagliata, scaduta o incollata con spazi. Popup → **Cambia** → reincolla → **Verifica** (deve elencare i modelli). |
-| **429 / `RATE_LIMIT`** | Il client ha già ritentato 3 volte rispettando `retry-after`. Aspetta un minuto e `rescan()`. Se capita su pochi messaggi, è più probabile un problema di quota sull'account TypeSafe che il limite di 1.200 req/min. |
-| **Barra nel punto sbagliato / coperta** | `BADGE_PLACEMENT = "append-cell"`, costante in testa a `src/content/inject.js`, poi ricarica estensione e tab. |
-| **Numeri incoerenti nel popup** | Prima controlla che non sia normale: *Con verdetto* è relativo alla scheda Gmail aperta e cala quando Gmail ricicla le righe, mentre *Analisi riuscite* e *Token input* sono totali di sessione che salgono e basta (§4). Se restano incoerenti: **Svuota cache** nel popup (`CLEAR_CACHE`), poi ricarica Gmail. |
+| **No bar at all** | Are you in **Sent / Drafts / Scheduled / Outbox / Templates**? There the analysis is disabled on purpose (§1), it is not a fault. Did you reload the Gmail tab after loading the extension? Then, in the console: `window.JevGuard.debug()`. `enabled: false` → turn the switch on in the popup (it restarts OFF at every Chrome start). `mainFound: false` → update `MAIN_SELECTOR` in `src/content/inject.js`: it is the container observers and row lookup are attached to, and if it does not match `rescan()` returns immediately, so touching `gmail-rows.js` is pointless. `mainFound: true` but `detectedRows: 0` → update `ROW_SELECTORS` / `SUBJECT_CELL_SELECTOR` in `src/content/gmail-rows.js`. `firstRow.senderAddress: ""` → only sender extraction broke. If `debug` does not exist, the content scripts never ran: check the errors in `chrome://extensions`. |
+| **Pulsing grey bars that never stop** | Analysis in progress or a stuck queue: look at `pending` / `queued` in `debug()` and at the service worker console. |
+| **Grey bars with `!`** | Hover over them: the tooltip gives the reason and ends with the code in square brackets (`Analisi non riuscita: … [AUTH]`). Codes: `NO_KEY`, `AUTH`, `RATE_LIMIT`, `BAD_REQUEST`, `NETWORK`, `TIMEOUT`, `DISABLED`, `UNKNOWN`. Once fixed, `window.JevGuard.rescan()`: it clears the errored verdicts and re-analyses (plain scrolling does not retry). |
+| **401 / `AUTH`** | Key wrong, expired or pasted with whitespace. Popup → **Cambia** ("Change") → paste again → **Verifica** ("Verify"), which must list the models. |
+| **429 / `RATE_LIMIT`** | The client already retried 3 times honouring `retry-after`. Wait a minute and `rescan()`. If it happens on just a few messages, a quota problem on the TypeSafe account is more likely than the 1,200 req/min limit. |
+| **Bar in the wrong place / covered** | `BADGE_PLACEMENT = "append-cell"`, the constant at the top of `src/content/inject.js`, then reload the extension and the tab. |
+| **Inconsistent numbers in the popup** | First check it is not normal: *Con verdetto* is relative to the open Gmail tab and goes down when Gmail recycles rows, while *Analisi riuscite* and *Token input* are session totals that only go up (§4). If they stay inconsistent: **Svuota cache** ("Clear cache") in the popup (`CLEAR_CACHE`), then reload Gmail. |
 
-`window.JevGuard.debug()` disegna anche un bordo magenta tratteggiato per 3 secondi attorno a
-ogni riga che ha riconosciuto: è il modo più rapido per capire se il problema è il
-riconoscimento delle righe o l'analisi.
+`window.JevGuard.debug()` also draws a dashed magenta border for 3 seconds around every row it
+recognised: it is the quickest way to tell whether the problem is row detection or the analysis.
+
+---
+
+The original Italian version of this README is preserved in the first commit (`4b8b07c`).
