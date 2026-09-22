@@ -18,7 +18,14 @@ actually have in front of you.
 
 ```
 Gmail row → sender / subject / preview → Jev (1 request) → coloured bar + %
+                                                        ↳ hover the bar → all
+                                                          six questions and
+                                                          their answers
 ```
+
+Hovering the bar opens a small card with the **whole evaluation**: the two questions that make
+the percentage and the four that explain it, each with Jev's answer. It goes away as soon as the
+mouse leaves the bar (§3).
 
 **What it never analyses**: the views where the row shows the *recipient* instead of the
 sender — **Sent, Drafts, Scheduled, Outbox, Templates**. There `span[email]` is the person
@@ -147,18 +154,27 @@ A ~54 px bar: 6 px of bar plus the percentage in 11 px type. It never changes th
 
 The thresholds apply to the unrounded value: a bar showing "65 %" may still be `sospetto` (0.647).
 
-- **Tooltip** (the bar's `title`), four blocks in this order:
-  1. summary line — "Rischio phishing 87 % (alto)" / "Probabile spam …" / "Rischio …";
-  2. `spam NN% · phishing NN%  (la % mostrata è la maggiore delle due)` — the percentage shown
-     is the larger of the two;
-  3. one `• <signal>: NN%` line for every explanatory signal **≥ 40 %** (all four signals are
-     always computed, only the ones that actually matter show up in the tooltip);
-  4. always, the closing line about where the judgement comes from:
-     `Valutato da TypeSafe Jev su mittente (nome, indirizzo e dominio), oggetto e anteprima.`
-- **Transient states**: pulsing grey bar = analysis in progress; grey bar with `!` = error. The
-  error tooltip is `Analisi non riuscita: <reason in Italian> [CODE]` (with `NO_KEY` a second
-  line points you to the popup): the code in square brackets is the one you find in the table
-  in §9.
+- **Hover panel**: put the mouse on the bar (or on the percentage) and after ~90 ms a card
+  opens next to it — to its left, or below it if the window is narrow — with the whole
+  evaluation:
+  1. the big percentage and the verdict, "Rischio phishing · alto" / "Probabile spam …";
+  2. `spam NN% · phishing NN% — mostrata la maggiore delle due`;
+  3. **all six questions with their answers**, in two groups: *Domande che determinano la
+     percentuale* (`is_phishing`, `is_spam`) and *Segnali che spiegano il verdetto* (the other
+     four). Each has its own mini bar on the same green→red ramp and its percentage; the answer
+     is in bold when it is ≥ 50 %, i.e. when Jev is saying "yes", and `n/d` if Jev gave no
+     usable answer;
+  4. a footer: the ≥ 50 % legend, the model, the input tokens and where the judgement comes from
+     (sender name/address/domain, subject, preview).
+
+  The card **disappears the moment the mouse leaves the indicator** — it is
+  `pointer-events: none`, so it never swallows a click on the row and moving onto it closes it
+  instead of keeping it open. Scrolling, a click or any keypress closes it too. There is
+  deliberately no `title` attribute (the native tooltip would pop up on top of the card after a
+  second): the same text is in `aria-label` for screen readers.
+- **Transient states**: pulsing grey bar = analysis in progress (the panel says so); grey bar
+  with `!` = error. The error panel is `<reason in Italian> [CODE]` plus the remedy: the code in
+  square brackets is the one you find in the table in §9.
 
 **Position**: the bar is absolutely positioned inside the subject cell, right-aligned → it sits
 just left of the date column, and the icons Gmail shows on hover do not cover it. If you prefer
@@ -173,7 +189,7 @@ at the top of `src/content/inject.js`.
 |---|---|
 | `manifest.json` | MV3. Permissions: only `storage` + host `https://api.typesafe.ai/*`. No `tabs`, no `activeTab`. |
 | `package.json` | No dependencies, no build. It exists only for `"type": "module"`, so Node reads `src/jev.js` and `src/typesafe-client.js` as ESM even before Node 20.19 (plus two shortcuts: `npm run icons`, `npm run calibrate`). |
-| `src/jev.js` | ESM. `JEV_MODEL`, `QUESTIONS` (the 6 Nouls), `buildState`, `scoreAnswers`, `RISK_BANDS`/`riskLevel`, `riskColor`, `SIGNAL_LABELS`, `senderDomain`, `verdictTooltip`. Zero `chrome.*`: it also runs in Node. |
+| `src/jev.js` | ESM. `JEV_MODEL`, `QUESTIONS` (the 6 Nouls), `buildState`, `scoreAnswers`, `RISK_BANDS`/`riskLevel`, `riskColor`, `SIGNAL_LABELS`, `QUESTION_META` (the Italian questions shown in the hover panel), `senderDomain`, `verdictTooltip`. Zero `chrome.*`: it also runs in Node. |
 | `src/typesafe-client.js` | ESM. `systemOne()`, `listModels()`, `TypeSafeError`, `italianMessage()`, `inputTokensOf()` (the single tolerant reader of the token count, shared with the test). 20 s timeout, 3 retries with exponential backoff that honours `retry-after`. |
 | `src/background.js` | Service worker (module). Cache, queue, calls to Jev, storage, toolbar badge. |
 | `src/content/gmail-rows.js` | Classic script. The file that knows Gmail's **row** markup (`listRows`, `extractRow`, `subjectCell`) and the views to skip; the only other Gmail selector in the project is `MAIN_SELECTOR` in `inject.js`. |
@@ -183,10 +199,14 @@ at the top of `src/content/inject.js`.
 | `tools/make-icons.mjs` | Generates the 3 PNGs in `icons/`. |
 | `tools/fixtures.json` | Sample emails for calibration. |
 | `tools/contract-test.mjs` | Test against the real API (needs the key). |
+| `tools/panel-test.mjs` | The hover panel driven in jsdom (needs `JSDOM_HOME`, see §8). |
 
 The content scripts **are not modules** (they cannot import `jev.js`): `inject.js` recomputes
-the tooltip and the colour on its own, mirroring `verdictTooltip()` and `riskColor()`.
-**If you touch those two functions, update `inject.js` as well.**
+the summary text and the colour on its own, mirroring `verdictTooltip()` and `riskColor()`.
+**If you touch those two functions, update `inject.js` as well.** The hover panel needs almost
+none of that: the Italian questions travel inside the verdict (`questions[]`, built from
+`QUESTION_META` in `src/jev.js`). The one exception is `panelQuestions()`, whose fallback for a
+verdict cached by an older version repeats the two `score` questions.
 
 ### Message protocol
 
@@ -248,7 +268,8 @@ parallel (cheaper and faster than six calls).
 | `credential_or_payment_request` | does it ask you to authenticate, confirm data, pay or transfer money? |
 | `too_good_to_be_true` | does it promise prizes, winnings, inheritances, unexpected refunds, guaranteed returns? |
 
-The first two make the percentage, the other four only explain it in the tooltip.
+The first two make the percentage, the other four only explain it. All six, with their
+answers, are listed in the hover panel (§3) — the Italian wording lives in `QUESTION_META`.
 The `state` that travels with the questions carries **exactly the five fields the questions
 mention** (§7): everything else would be noise, and noise costs accuracy.
 
@@ -350,6 +371,25 @@ Tuning cycle:
 
 The band thresholds live in `RISK_BANDS`, again in `src/jev.js`.
 
+### The hover panel without a browser
+
+`tools/panel-test.mjs` loads the real `src/content/inject.js` in **jsdom** with a stubbed
+`chrome`, a stubbed `NS.rows` (so Gmail's markup is irrelevant) and an `IntersectionObserver`
+that declares every row visible; then it fires real mouse events and asserts the panel opens,
+lists all six questions and — the point of the exercise — **closes as soon as the pointer leaves
+the badge** (plus scroll, click, keypress, removed row, error and old-cache paths).
+
+jsdom is not a dependency of the extension: install it wherever you like and point the test at it.
+
+```bash
+mkdir -p /tmp/jg-jsdom && cd /tmp/jg-jsdom && npm install jsdom
+cd ~/Developer/jev-gmail/gmail-jev-guard
+JSDOM_HOME=/tmp/jg-jsdom node tools/panel-test.mjs
+```
+
+In Gmail, the same panel can be opened without hovering: `window.JevGuard.showPanel()` in the
+page console (`hidePanel()` closes it).
+
 ## 9. Troubleshooting
 
 Two consoles to keep in mind:
@@ -360,7 +400,7 @@ the **page** one (F12 on Gmail) for the content scripts, and the **service worke
 |---|---|
 | **No bar at all** | Are you in **Sent / Drafts / Scheduled / Outbox / Templates**? There the analysis is disabled on purpose (§1), it is not a fault. Did you reload the Gmail tab after loading the extension? Then, in the console: `window.JevGuard.debug()`. `enabled: false` → turn the switch on in the popup (it restarts OFF at every Chrome start). `mainFound: false` → update `MAIN_SELECTOR` in `src/content/inject.js`: it is the container observers and row lookup are attached to, and if it does not match `rescan()` returns immediately, so touching `gmail-rows.js` is pointless. `mainFound: true` but `detectedRows: 0` → update `ROW_SELECTORS` / `SUBJECT_CELL_SELECTOR` in `src/content/gmail-rows.js`. `firstRow.senderAddress: ""` → only sender extraction broke. If `debug` does not exist, the content scripts never ran: check the errors in `chrome://extensions`. |
 | **Pulsing grey bars that never stop** | Analysis in progress or a stuck queue: look at `pending` / `queued` in `debug()` and at the service worker console. |
-| **Grey bars with `!`** | Hover over them: the tooltip gives the reason and ends with the code in square brackets (`Analisi non riuscita: … [AUTH]`). Codes: `NO_KEY`, `AUTH`, `RATE_LIMIT`, `BAD_REQUEST`, `NETWORK`, `TIMEOUT`, `DISABLED`, `UNKNOWN`. Once fixed, `window.JevGuard.rescan()`: it clears the errored verdicts and re-analyses (plain scrolling does not retry). |
+| **Grey bars with `!`** | Hover over them: the panel gives the reason and the code in square brackets (`… [AUTH]`). Codes: `NO_KEY`, `AUTH`, `RATE_LIMIT`, `BAD_REQUEST`, `NETWORK`, `TIMEOUT`, `DISABLED`, `UNKNOWN`. Once fixed, `window.JevGuard.rescan()`: it clears the errored verdicts and re-analyses (plain scrolling does not retry). |
 | **401 / `AUTH`** | Key wrong, expired or pasted with whitespace. Popup → **Cambia** ("Change") → paste again → **Verifica** ("Verify"), which must list the models. |
 | **429 / `RATE_LIMIT`** | The client already retried 3 times honouring `retry-after`. Wait a minute and `rescan()`. If it happens on just a few messages, a quota problem on the TypeSafe account is more likely than the 1,200 req/min limit. |
 | **Bar in the wrong place / covered** | `BADGE_PLACEMENT = "append-cell"`, the constant at the top of `src/content/inject.js`, then reload the extension and the tab. |

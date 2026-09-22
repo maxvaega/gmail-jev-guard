@@ -110,7 +110,7 @@ export const QUESTIONS = {
   }
 };
 
-/** Italian labels for the explanatory signals shown in the tooltip. */
+/** Short Italian labels for the four explanatory signals (one-line summary). */
 export const SIGNAL_LABELS = {
   sender_identity_mismatch: "mittente non coerente col dominio",
   urgency_pressure: "pressione/urgenza",
@@ -119,6 +119,25 @@ export const SIGNAL_LABELS = {
 };
 
 const SIGNAL_IDS = Object.keys(SIGNAL_LABELS);
+
+/**
+ * The same six Nouls written out as Italian questions, for the hover panel that
+ * shows the full evaluation. Deliberately separate from SIGNAL_LABELS: those are
+ * short noun phrases for a one-line summary, these are the questions themselves.
+ * `role` says what the answer is used for — `score` for the two whose maximum IS
+ * the percentage, `signal` for the four that only explain it.
+ */
+export const QUESTION_META = {
+  is_phishing: { role: "score", question: "È un tentativo di phishing o truffa?" },
+  is_spam: { role: "score", question: "È posta commerciale non richiesta (spam)?" },
+  sender_identity_mismatch: { role: "signal", question: "Il mittente dichiara un'organizzazione incoerente col dominio?" },
+  urgency_pressure: { role: "signal", question: "Mette fretta o minaccia conseguenze?" },
+  credential_or_payment_request: { role: "signal", question: "Chiede credenziali, dati personali o pagamenti?" },
+  too_good_to_be_true: { role: "signal", question: "Promette un guadagno o un premio irrealistico?" }
+};
+
+/** Declaration order of QUESTIONS: the order the hover panel lists them in. */
+const QUESTION_IDS = Object.keys(QUESTIONS);
 
 /** Truncation limits: the list view never shows more than this anyway. */
 const MAX_SUBJECT = 300;
@@ -195,7 +214,17 @@ export function scoreAnswers(answers) {
     .filter((signal) => signal.value !== null)
     .sort((a, b) => b.value - a.value);
 
-  return { risk, kind, level: riskLevel(risk), phishing, spam, signals };
+  // Every question with its answer, unsorted and unfiltered: the hover panel must
+  // show the whole evaluation, so an unusable answer travels as `value: null`
+  // ("n/d" in the panel) instead of silently disappearing from the list.
+  const questions = QUESTION_IDS.map((id) => ({
+    id,
+    role: (QUESTION_META[id] || {}).role || "signal",
+    question: (QUESTION_META[id] || {}).question || id,
+    value: noul(id)
+  }));
+
+  return { risk, kind, level: riskLevel(risk), phishing, spam, signals, questions };
 }
 
 /** Continuous green→red ramp. Same hue in both Gmail themes, lightness differs. */
@@ -207,7 +236,11 @@ export function riskColor(risk, dark = false) {
   };
 }
 
-/** Italian one-line summary used in the badge tooltip. */
+/**
+ * Italian summary of a verdict: the badge's `aria-label` (it carries no `title` —
+ * the native tooltip would cover the hover panel). The panel itself renders
+ * `questions` instead, so it needs no text from here.
+ */
 export function verdictTooltip(verdict) {
   const pct = (value) => `${Math.round((value ?? 0) * 100)}%`;
   const head =

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "JevGuard — spam & phishing meter per Gmail",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Mostra in ogni riga di Gmail la probabilità che il messaggio sia spam o phishing, calcolata da TypeSafe Jev.",
   "minimum_chrome_version": "116",
   "permissions": ["storage"],

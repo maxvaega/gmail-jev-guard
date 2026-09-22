@@ -36,10 +36,13 @@
   pointer-events: none;
 }
 
-/* ... but the tooltip needs a hover target, and `title` resolves to the nearest
-   ancestor that carries it, so re-enable hit testing on the children only. */
+/* ... but the hover panel needs a hover target, so re-enable hit testing on the
+   children only: the bar and the percentage are the visible indicator, and the
+   rest of the 54px box keeps letting clicks through to the Gmail row.
+   `cursor: help` is the only hint that there is something to hover. */
 .jg-badge > * {
   pointer-events: auto;
+  cursor: help;
 }
 
 /* ---- overlay mode: anchored inside the subject cell, flush right ---- */
@@ -156,6 +159,154 @@
   font-weight: 600;
 }
 
+/* ---- hover panel: the full evaluation, one line per Jev question ----
+ *
+ * A single node appended to <body> and positioned `fixed` from the badge's
+ * bounding rect: inside the row it would be clipped by Gmail's overflow and
+ * would have to fight Gmail's z-index. `pointer-events: none` is essential —
+ * the panel must vanish as soon as the pointer leaves the badge (moving "into"
+ * the panel is a leave), and it must never swallow a click on a Gmail row.
+ */
+
+.jg-panel {
+  --jg-h: 0;      /* set inline per verdict, as on the badge */
+  --jg-l: 42%;
+  --jg-tl: 30%;
+  --jg-track: rgba(60, 64, 67, 0.18);
+  --jg-dim: rgba(60, 64, 67, 0.62);
+  --jg-line: rgba(60, 64, 67, 0.12);
+
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2147483000;
+  box-sizing: border-box;
+  width: 330px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow: hidden;
+  padding: 10px 12px;
+  border: 1px solid rgba(60, 64, 67, 0.14);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(60, 64, 67, 0.16), 0 8px 24px rgba(60, 64, 67, 0.24);
+  color: #202124;
+  font: 12px/1.45 Roboto, "Helvetica Neue", Arial, sans-serif;
+  text-align: left;
+  white-space: normal;
+  pointer-events: none;
+}
+
+/* The UA rule `[hidden] { display: none }` loses to any class rule that sets
+   `display`, so the hidden state is spelled out here. */
+.jg-panel[hidden] {
+  display: none !important;
+}
+
+.jg-panel-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.jg-panel-score {
+  flex: none;
+  font-size: 19px;
+  font-weight: 500;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--jg-h) 55% var(--jg-tl));
+}
+
+.jg-panel-title {
+  font-weight: 500;
+}
+
+.jg-panel-sub {
+  margin-top: 3px;
+  color: var(--jg-dim);
+}
+
+.jg-panel-list {
+  display: grid;
+  grid-template-columns: 1fr 44px 34px;
+  align-items: center;
+  gap: 5px 8px;
+  margin-top: 9px;
+}
+
+.jg-panel-group {
+  grid-column: 1 / -1;
+  margin-top: 3px;
+  padding-top: 5px;
+  border-top: 1px solid var(--jg-line);
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--jg-dim);
+}
+
+.jg-panel-list > .jg-panel-group:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.jg-panel-q {
+  min-width: 0;
+}
+
+.jg-panel-bar {
+  box-sizing: border-box;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--jg-track);
+  overflow: hidden;
+}
+
+.jg-panel-bar > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 3px;
+  font-style: normal;
+}
+
+.jg-panel-val {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--jg-dim);
+}
+
+/* answer >= 50%: Jev said "yes" */
+.jg-panel-q.jg-hi,
+.jg-panel-val.jg-hi {
+  font-weight: 600;
+  color: inherit;
+}
+
+.jg-panel-foot {
+  margin-top: 9px;
+  padding-top: 6px;
+  border-top: 1px solid var(--jg-line);
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--jg-dim);
+}
+
+.jg-panel-error .jg-panel-score {
+  color: #c5221f;
+}
+
+/* no verdict yet: the big number is a neutral ellipsis, not a red 0% */
+.jg-panel-pending .jg-panel-score {
+  color: var(--jg-dim);
+}
+
+.jg-panel-hint {
+  margin-top: 4px;
+}
+
 /* ---- dark Gmail theme (class set on <html> by inject.js) ---- */
 
 .jg-dark .jg-badge {
@@ -170,6 +321,22 @@
 }
 
 .jg-dark .jg-error .jg-pct {
+  color: #f28b82;
+}
+
+.jg-dark .jg-panel {
+  --jg-l: 52%;
+  --jg-tl: 72%;
+  --jg-track: rgba(232, 234, 237, 0.22);
+  --jg-dim: rgba(232, 234, 237, 0.62);
+  --jg-line: rgba(232, 234, 237, 0.14);
+  background: #2d2e30;
+  color: #e8eaed;
+  border-color: rgba(232, 234, 237, 0.16);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45), 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+
+.jg-dark .jg-panel-error .jg-panel-score {
   color: #f28b82;
 }
 

@@ -27,7 +27,7 @@ gmail-jev-guard/
     background.js          (owner: bg agent)   service worker                [ESM]
     content/
       gmail-rows.js        (owner: content agent) DOM adapter                [classic]
-      inject.js            (owner: content agent) observers + badge render   [classic]
+      inject.js            (owner: content agent) observers, badge, panel    [classic]
       badge.css            (owner: content agent)
     popup/
       popup.html|.css|.js  (owner: popup agent)
@@ -36,6 +36,7 @@ gmail-jev-guard/
     make-icons.mjs         (owner: tools agent) writes the 3 PNGs
     fixtures.json          (owner: tools agent) sample emails for calibration
     contract-test.mjs      (owner: tools agent) real API test (needs key)
+    panel-test.mjs         (owner: tools agent) hover panel in jsdom (JSDOM_HOME)
 ```
 
 ## 2. Data shapes
@@ -60,7 +61,11 @@ gmail-jev-guard/
   kind: "phishing" | "spam" | "ok",
   level: "basso" | "sospetto" | "alto",
   phishing: 0.87, spam: 0.41,
-  signals: [ { id, label, value } ],   // Italian label, 0..1, sorted desc
+  signals: [ { id, label, value } ],   // short Italian label, 0..1, sorted desc
+  questions: [ { id, role, question, value } ],  // ALL six, QUESTIONS order, for
+                            // the hover panel: `role` is "score" (is_phishing,
+                            // is_spam) or "signal", `question` is the Italian
+                            // question, `value` is 0..1 or null if unusable
   inputTokens: 612,
   model: "jev-1.13.0",
   ts: 1758... ,             // Date.now() at completion
@@ -117,7 +122,9 @@ and `chrome.action.setBadgeBackgroundColor({ color: "#1a73e8" })`.
   `preview_text`); a field whose value is unknown is omitted, never sent as a placeholder —
   the single exception is `preview_text`, always present, possibly an empty string.
   `hasAttachment` and `otherSendersCount` are deliberately NOT sent to the model.
-- `scoreAnswers(answers) -> { risk, kind, level, phishing, spam, signals }`
+- `scoreAnswers(answers) -> { risk, kind, level, phishing, spam, signals, questions }`
+- `SIGNAL_LABELS` (short labels, one-line summary) and `QUESTION_META` (`{role, question}`
+  per Noul, the Italian questions the hover panel lists)
 - `RISK_BANDS`, `riskColor(risk) -> {bar, text}` (HSL strings, dark-mode agnostic)
 
 `src/typesafe-client.js` exports:
@@ -156,10 +163,38 @@ Both are dependency-free ESM and must stay usable from plain Node 20 (`tools/con
 - Colour: continuous hue 120 (green) → 0 (red), `hsl(H 70% 42%)`; the track is a
   translucent grey that works on both Gmail themes. `.jg-dark` is set on `<html>` when
   the Gmail background is dark (computed luminance of `body`).
-- `title` attribute = Italian tooltip, four blocks: the risk line; `spam NN% · phishing NN%
+- **No `title` attribute** (it would pop the native tooltip on top of the panel): the same
+  Italian text goes into `aria-label`, four blocks — the risk line; `spam NN% · phishing NN%
   (la % mostrata è la maggiore delle due)`; one line per explanatory signal `>= 40%`; the closing
   provenance line "Valutato da TypeSafe Jev su mittente (nome, indirizzo e dominio), oggetto e
   anteprima." — kept textually identical in `src/jev.js` and `src/content/inject.js`.
+- Only the badge's children are hit-testable (`pointer-events`): the bar and the percentage are
+  the hover target, the rest of the 54 px box keeps letting clicks through to the Gmail row.
+
+## 7.1 Hover panel (visual spec)
+
+- One `div.jg-panel` appended to `<body>`, `position: fixed`, placed from the badge's
+  `getBoundingClientRect()`: **left** of the badge and vertically centred on it; under it
+  (right-aligned), or over it, only when the left side has no room. Never inside the row —
+  Gmail's overflow would clip it and its z-index would have to be fought.
+- `pointer-events: none`, always. Moving the pointer "into" the panel is therefore a *leave*
+  of the badge and the panel closes: **the panel must disappear as soon as the mouse is off the
+  indicator**, and it must never swallow a click on a Gmail row. No hover-to-keep-open.
+- Opens after `PANEL_SHOW_MS` (90 ms) on the badge, closes after `PANEL_HIDE_MS` (120 ms) of
+  grace — the grace exists only because the 1 px gap between the bar and the percentage belongs
+  to the row, so crossing it fires a `mouseout` the next `mouseover` has to cancel.
+- Also closes on: scroll, `mousedown`, any `keydown`, window `blur`, `visibilitychange`,
+  `hashchange`, the anchored badge being removed/recycled, toggle-off and context invalidation.
+- Content, with a verdict: big percentage + "Rischio phishing · alto"; the `spam/phishing` line;
+  **all six questions in `QUESTIONS` order**, grouped as "Domande che determinano la percentuale"
+  (the two `score` Nouls) and "Segnali che spiegano il verdetto" (the four `signal` ones), each
+  with a mini bar on the same hue ramp and its percentage (`n/d` when the answer is unusable,
+  bold when `>= 50%` = Jev answering "yes"); a footer with the `>= 50%` legend, the model, the
+  input tokens and the provenance line. Pending: one line. Error: `message [CODE]` + the remedy.
+- A verdict landing while the pointer is on the badge re-renders the open panel.
+- Delegated `mouseover`/`mouseout` on `document` in the **capture** phase (immune to Gmail's own
+  delegation calling `stopPropagation`); the row's state is looked up by `data-jg-id`, never kept
+  in a side map, because Gmail recycles rows.
 
 ## 8. Debug affordances (required — the author cannot open a browser)
 
@@ -167,4 +202,9 @@ Both are dependency-free ESM and must stay usable from plain Node 20 (`tools/con
   first extracted `RowData`, the cache size, and outlines every detected row with a
   dashed magenta border for 3 s.
 - `window.JevGuard.rescan()` forces a full rescan.
+- `window.JevGuard.showPanel([id])` opens the hover panel without a mouse (first visible row
+  with a verdict, or the given id); `window.JevGuard.hidePanel()` closes it. `debug()` reports
+  `panelOpen`.
+- `tools/panel-test.mjs` drives the real `inject.js` in jsdom (stubbed `chrome`, stubbed
+  `NS.rows`) and asserts the open/close behaviour: `JSDOM_HOME=/path node tools/panel-test.mjs`.
 - Every unexpected DOM situation logs once with the `[JevGuard]` prefix.

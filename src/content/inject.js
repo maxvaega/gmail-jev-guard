@@ -11,7 +11,10 @@
  *    single-page navigation (MutationObserver + hashchange),
  *  - ask the service worker for cached verdicts first, then analyse the rest in
  *    concurrent chunks of 5,
- *  - paint / update / remove the badges, never twice in the same row.
+ *  - paint / update / remove the badges, never twice in the same row,
+ *  - show the hover panel with the full evaluation (every Jev question and its
+ *    answer) while the pointer is on a badge, and take it down as soon as it
+ *    leaves — see the "hover panel" section below.
  */
 (function () {
   "use strict";
@@ -46,6 +49,11 @@
   const ROOT_MARGIN = "200px 0px";
   const STATUS_POLL_MS = 4000;
   const DEBUG_OUTLINE_MS = 3000;
+  /** Hover panel: open delay, close grace, and its distance from the badge. */
+  const PANEL_SHOW_MS = 90;
+  const PANEL_HIDE_MS = 120;
+  const PANEL_GAP = 8;
+  const PANEL_MARGIN = 8;
   const MAIN_SELECTOR = 'div[role="main"]';
 
   let enabled = false;
@@ -77,6 +85,12 @@
   let rescanSince = 0;
   let statusTimer = null;
   let pendingForce = false;
+
+  /** Hover panel: the single <body>-level node, and the badge it belongs to. */
+  let panel = null;
+  let panelAnchor = null;
+  let panelShowTimer = null;
+  let panelHideTimer = null;
 
   const warned = new Set();
   function warnOnce(key, message, detail) {
@@ -191,9 +205,20 @@
     return cell;
   }
 
+  /**
+   * The badge deliberately carries no `title`: the native tooltip would pop up on
+   * top of the hover panel after a second. The same text goes into `aria-label`,
+   * so a screen reader still gets the verdict — the panel is its visual version.
+   */
+  function describe(badge, text) {
+    if (badge.hasAttribute("title")) badge.removeAttribute("title");
+    badge.setAttribute("aria-label", "JevGuard — " + String(text).replace(/\n/g, " · "));
+  }
+
   function buildBadge() {
     const badge = document.createElement("span");
     badge.className = "jg-badge";
+    badge.setAttribute("role", "img");
     const bar = document.createElement("span");
     bar.className = "jg-bar";
     const fill = document.createElement("i");
@@ -234,7 +259,7 @@
       fill.style.width = pct(verdict.risk);
       fill.style.background = "hsl(" + hue + " 70% var(--jg-l, 42%))";
       label.textContent = pct(verdict.risk);
-      badge.title = verdictTooltip(verdict);
+      describe(badge, verdictTooltip(verdict));
     } else if (state.kind === "error") {
       badge.className = "jg-badge jg-error";
       badge.dataset.level = "errore";
@@ -242,7 +267,7 @@
       fill.style.width = "0%";
       fill.style.removeProperty("background");
       label.textContent = "!";
-      badge.title = errorTooltip(state.error);
+      describe(badge, errorTooltip(state.error));
     } else {
       badge.className = "jg-badge jg-pending";
       badge.dataset.level = "attesa";
@@ -250,8 +275,11 @@
       fill.style.width = "100%";
       fill.style.removeProperty("background");
       label.textContent = "…";
-      badge.title = "JevGuard: analisi in corso…";
+      describe(badge, "analisi in corso…");
     }
+    // A verdict landing while the pointer sits on this badge must refresh the
+    // open panel (pending -> verdict, or a row Gmail recycled under the pointer).
+    if (badge === panelAnchor && panelOpen()) renderPanel();
     return true;
   }
 
@@ -281,6 +309,7 @@
   function removeBadgeFrom(row) {
     if (!row || typeof row.querySelectorAll !== "function") return;
     for (const badge of row.querySelectorAll(".jg-badge")) {
+      if (badge === panelAnchor) hidePanel();
       const host = badge.parentElement;
       badge.remove();
       cleanupHost(host);
@@ -288,9 +317,320 @@
   }
 
   function removeAllBadges() {
+    hidePanel();
     for (const badge of document.querySelectorAll(".jg-badge")) badge.remove();
     for (const cell of document.querySelectorAll(".jg-cell")) cell.remove();
     for (const anchor of document.querySelectorAll(".jg-anchor")) anchor.classList.remove("jg-anchor");
+  }
+
+  // ------------------------------------------------------------- hover panel
+
+  /**
+   * Hover detail: a single node appended to <body>, positioned `fixed` from the
+   * badge's bounding rect, listing every Jev question with its answer.
+   *
+   *  - it lives outside the row on purpose: inside it Gmail's overflow would clip
+   *    it and it would have to fight Gmail's z-index;
+   *  - it is `pointer-events: none` (badge.css): moving the pointer "into" the
+   *    panel therefore counts as leaving the badge and the panel goes away — the
+   *    requirement is that it disappears as soon as the mouse is off the
+   *    indicator — and it can never swallow a click on a Gmail row;
+   *  - it is placed to the LEFT of the badge: every badge sits at the same x, so a
+   *    panel opening below would cover the next rows' badges and its content would
+   *    flip row after row as the pointer crossed them. Under/over the badge is the
+   *    fallback for a window too narrow on the left.
+   */
+
+  function panelOpen() {
+    return Boolean(panel && !panel.hasAttribute("hidden"));
+  }
+
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined && text !== null) node.textContent = String(text);
+    return node;
+  }
+
+  function numberOrNull(value) {
+    return typeof value === "number" && isFinite(value) ? value : null;
+  }
+
+  function clamp(value, min, max) {
+    if (!(max > min)) return min; // panel larger than the viewport
+    return Math.max(min, Math.min(value, max));
+  }
+
+  function ensurePanel() {
+    if (panel && panel.isConnected) return panel;
+    if (!document.body) return null;
+    panel = document.createElement("div");
+    panel.className = "jg-panel";
+    panel.setAttribute("hidden", "");
+    // The badge's aria-label already carries this verdict: a screen reader must
+    // not read the whole table a second time.
+    panel.setAttribute("aria-hidden", "true");
+    document.body.appendChild(panel);
+    return panel;
+  }
+
+  /**
+   * Every question with its answer, in a fixed order. A verdict cached by an
+   * older version has no `questions`, so the list is rebuilt from the fields that
+   * have always been in the payload: the panel is never empty.
+   */
+  function panelQuestions(verdict) {
+    const list = Array.isArray(verdict.questions)
+      ? verdict.questions.filter((item) => item && typeof item.id === "string")
+      : [];
+    if (list.length) return list;
+    const legacy = [
+      { id: "is_phishing", role: "score", question: "È un tentativo di phishing o truffa?", value: numberOrNull(verdict.phishing) },
+      { id: "is_spam", role: "score", question: "È posta commerciale non richiesta (spam)?", value: numberOrNull(verdict.spam) }
+    ];
+    for (const signal of Array.isArray(verdict.signals) ? verdict.signals : []) {
+      if (!signal || typeof signal.id !== "string") continue;
+      legacy.push({ id: signal.id, role: "signal", question: signal.label || signal.id, value: numberOrNull(signal.value) });
+    }
+    return legacy;
+  }
+
+  const PANEL_GROUPS = [
+    { role: "score", title: "Domande che determinano la percentuale" },
+    { role: "signal", title: "Segnali che spiegano il verdetto" }
+  ];
+
+  function verdictHeadline(verdict) {
+    const level = verdict.level ? " · " + verdict.level : "";
+    if (verdict.kind === "phishing") return "Rischio phishing" + level;
+    if (verdict.kind === "spam") return "Probabile spam" + level;
+    return "Rischio complessivo" + level;
+  }
+
+  function appendQuestion(list, question) {
+    const value = numberOrNull(question.value);
+    const text = el("div", "jg-panel-q", question.question || question.id);
+    const bar = el("span", "jg-panel-bar");
+    const fill = el("i");
+    if (value !== null) {
+      fill.style.width = pct(value);
+      fill.style.background = "hsl(" + riskHue(value) + " 70% var(--jg-l, 42%))";
+    }
+    bar.appendChild(fill);
+    const val = el("span", "jg-panel-val", value === null ? "n/d" : pct(value));
+    if (value !== null && value >= 0.5) {
+      // >= 50% is Jev answering "yes" to that question.
+      text.classList.add("jg-hi");
+      val.classList.add("jg-hi");
+    }
+    list.appendChild(text);
+    list.appendChild(bar);
+    list.appendChild(val);
+  }
+
+  function fillVerdictPanel(node, verdict) {
+    node.className = "jg-panel";
+    node.style.setProperty("--jg-h", String(riskHue(verdict.risk)));
+
+    const head = el("div", "jg-panel-head");
+    head.appendChild(el("span", "jg-panel-score", pct(verdict.risk)));
+    head.appendChild(el("span", "jg-panel-title", verdictHeadline(verdict)));
+    node.appendChild(head);
+    node.appendChild(
+      el("div", "jg-panel-sub", "spam " + pct(verdict.spam) + " · phishing " + pct(verdict.phishing) + " — mostrata la maggiore delle due")
+    );
+
+    const all = panelQuestions(verdict);
+    const list = el("div", "jg-panel-list");
+    for (const group of PANEL_GROUPS) {
+      const items = all.filter((item) => (item.role === "score" ? "score" : "signal") === group.role);
+      if (!items.length) continue;
+      list.appendChild(el("div", "jg-panel-group", group.title));
+      for (const question of items) appendQuestion(list, question);
+    }
+    node.appendChild(list);
+
+    const model = typeof verdict.model === "string" && verdict.model ? verdict.model : "jev";
+    const tokens = numberOrNull(verdict.inputTokens);
+    const foot = el("div", "jg-panel-foot");
+    foot.appendChild(el("div", null, "Ogni risposta è la probabilità di «sì» secondo Jev (≥ 50% = sì)."));
+    foot.appendChild(
+      el("div", null, model + (tokens ? " · " + Math.round(tokens) + " token in input" : "") + " · valutati mittente (nome, indirizzo, dominio), oggetto e anteprima")
+    );
+    node.appendChild(foot);
+  }
+
+  function fillErrorPanel(node, error) {
+    node.className = "jg-panel jg-panel-error";
+    const code = error && error.code ? error.code : "UNKNOWN";
+    const message = error && error.message ? error.message : "errore inatteso";
+    const head = el("div", "jg-panel-head");
+    head.appendChild(el("span", "jg-panel-score", "!"));
+    head.appendChild(el("span", "jg-panel-title", "Analisi non riuscita"));
+    node.appendChild(head);
+    // The code stays visible: README's troubleshooting table keys its remedies
+    // off NO_KEY / AUTH / RATE_LIMIT.
+    node.appendChild(el("div", "jg-panel-sub", message + " [" + code + "]"));
+    if (code === "NO_KEY") node.appendChild(el("div", "jg-panel-hint", "Imposta la chiave dal popup di JevGuard."));
+    else if (code === "AUTH") node.appendChild(el("div", "jg-panel-hint", "Chiave TypeSafe rifiutata: verificala dal popup."));
+    else if (code === "RATE_LIMIT") node.appendChild(el("div", "jg-panel-hint", "Troppe richieste: riprova tra qualche secondo."));
+    node.appendChild(el("div", "jg-panel-foot", "Riprova disattivando e riattivando JevGuard, o con JevGuard.rescan()."));
+  }
+
+  function fillPendingPanel(node) {
+    node.className = "jg-panel jg-panel-pending";
+    const head = el("div", "jg-panel-head");
+    head.appendChild(el("span", "jg-panel-score", "…"));
+    head.appendChild(el("span", "jg-panel-title", "Analisi in corso"));
+    node.appendChild(head);
+    node.appendChild(el("div", "jg-panel-sub", "Jev sta valutando le sei domande su questo messaggio."));
+  }
+
+  /** The id of the row a badge belongs to: the state is looked up by id, never kept. */
+  function anchorRowId(badge) {
+    const owner = badge && typeof badge.closest === "function" ? badge.closest("[data-jg-id]") : null;
+    return owner && owner.dataset ? owner.dataset.jgId || "" : "";
+  }
+
+  function positionPanel(anchor, node) {
+    // It must be laid out to be measured; nothing is painted before the task ends,
+    // so setting left/top right after removing [hidden] shows no jump.
+    node.removeAttribute("hidden");
+    const rect = anchor.getBoundingClientRect();
+    const size = node.getBoundingClientRect();
+    const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+    const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+    let left;
+    let top;
+    if (rect.left - PANEL_GAP - PANEL_MARGIN >= size.width) {
+      left = rect.left - PANEL_GAP - size.width;
+      top = rect.top + rect.height / 2 - size.height / 2;
+    } else {
+      left = rect.right - size.width;
+      top = rect.bottom + PANEL_GAP;
+      if (top + size.height > vh - PANEL_MARGIN) top = rect.top - PANEL_GAP - size.height;
+    }
+    node.style.left = Math.round(clamp(left, PANEL_MARGIN, vw - PANEL_MARGIN - size.width)) + "px";
+    node.style.top = Math.round(clamp(top, PANEL_MARGIN, vh - PANEL_MARGIN - size.height)) + "px";
+  }
+
+  function renderPanel() {
+    const anchor = panelAnchor;
+    if (destroyed || !enabled || !anchor || !anchor.isConnected) {
+      hidePanel();
+      return;
+    }
+    const node = ensurePanel();
+    if (!node) return;
+    const id = anchorRowId(anchor);
+    const verdict = id ? verdicts.get(id) : null;
+    node.textContent = "";
+    node.style.removeProperty("--jg-h");
+    if (verdict && verdict.error) fillErrorPanel(node, verdict.error);
+    else if (verdict) fillVerdictPanel(node, verdict);
+    else if (id && pending.has(id)) fillPendingPanel(node);
+    else {
+      hidePanel();
+      return;
+    }
+    positionPanel(anchor, node);
+  }
+
+  function hidePanel() {
+    if (panelShowTimer) {
+      clearTimeout(panelShowTimer);
+      panelShowTimer = null;
+    }
+    if (panelHideTimer) {
+      clearTimeout(panelHideTimer);
+      panelHideTimer = null;
+    }
+    panelAnchor = null;
+    if (!panel) return;
+    panel.setAttribute("hidden", "");
+    panel.textContent = "";
+  }
+
+  function scheduleHide() {
+    if (panelShowTimer) {
+      clearTimeout(panelShowTimer);
+      panelShowTimer = null;
+    }
+    if (panelHideTimer) return;
+    // Short grace, not a lingering tooltip: the 1px gap between the bar and the
+    // percentage belongs to the row (`.jg-badge` itself is pointer-events: none),
+    // so crossing it fires a mouseout that the next mouseover must cancel.
+    panelHideTimer = setTimeout(() => {
+      panelHideTimer = null;
+      hidePanel();
+    }, PANEL_HIDE_MS);
+  }
+
+  function badgeFromEvent(event) {
+    const target = event ? event.target : null;
+    if (!target || target.nodeType !== 1 || typeof target.closest !== "function") return null;
+    return target.closest(".jg-badge");
+  }
+
+  function onPointerOver(event) {
+    if (destroyed || !enabled) return;
+    const badge = badgeFromEvent(event);
+    if (!badge) return;
+    if (panelHideTimer) {
+      clearTimeout(panelHideTimer);
+      panelHideTimer = null;
+    }
+    if (badge === panelAnchor && panelOpen()) return;
+    panelAnchor = badge;
+    if (panelOpen()) {
+      renderPanel(); // badge to badge: swap the content, no second delay
+      return;
+    }
+    if (panelShowTimer) clearTimeout(panelShowTimer);
+    panelShowTimer = setTimeout(() => {
+      panelShowTimer = null;
+      renderPanel();
+    }, PANEL_SHOW_MS);
+  }
+
+  function onPointerOut(event) {
+    if (!panelAnchor) return;
+    if (badgeFromEvent(event) !== panelAnchor) return;
+    const next = event.relatedTarget;
+    // Still inside the same badge (bar -> percentage): not a leave.
+    if (next && next.nodeType === 1 && typeof next.closest === "function" && next.closest(".jg-badge") === panelAnchor) return;
+    scheduleHide();
+  }
+
+  /** Anything that means the pointer is no longer pointing at that row. */
+  function onPanelDismiss() {
+    if (panelAnchor || panelOpen()) hidePanel();
+  }
+
+  /** Capture phase: immune to any stopPropagation() in Gmail's own delegation. */
+  function bindPanelEvents() {
+    document.addEventListener("mouseover", onPointerOver, true);
+    document.addEventListener("mouseout", onPointerOut, true);
+    document.addEventListener("scroll", onPanelDismiss, { capture: true, passive: true });
+    document.addEventListener("mousedown", onPanelDismiss, true);
+    document.addEventListener("keydown", onPanelDismiss, true);
+    document.addEventListener("visibilitychange", onPanelDismiss);
+    window.addEventListener("blur", onPanelDismiss);
+  }
+
+  function destroyPanel() {
+    hidePanel();
+    document.removeEventListener("mouseover", onPointerOver, true);
+    document.removeEventListener("mouseout", onPointerOut, true);
+    document.removeEventListener("scroll", onPanelDismiss, { capture: true });
+    document.removeEventListener("mousedown", onPanelDismiss, true);
+    document.removeEventListener("keydown", onPanelDismiss, true);
+    document.removeEventListener("visibilitychange", onPanelDismiss);
+    window.removeEventListener("blur", onPanelDismiss);
+    if (panel) {
+      panel.remove();
+      panel = null;
+    }
   }
 
   // ------------------------------------------------------------- dark theme
@@ -396,10 +736,14 @@
     for (const badge of document.querySelectorAll(".jg-badge")) {
       const owner = badge.closest("[data-jg-id]");
       if (owner && liveRows.has(owner)) continue;
+      if (badge === panelAnchor) hidePanel();
       const host = badge.parentElement;
       badge.remove();
       cleanupHost(host);
     }
+
+    // The anchored badge may have gone with a row Gmail dropped or re-rendered.
+    if (panelAnchor && !panelAnchor.isConnected) hidePanel();
 
     for (const id of rowElements.keys()) paintById(id);
   }
@@ -524,6 +868,7 @@
   }
 
   function onHashChange() {
+    hidePanel();
     if (destroyed || !enabled) return;
     if (mainEl && !mainEl.isConnected) mainEl = null;
     scheduleRescan(true);
@@ -764,6 +1109,7 @@
     if (destroyed) return;
     destroyed = true;
     stop();
+    destroyPanel();
     if (statusTimer) {
       clearInterval(statusTimer);
       statusTimer = null;
@@ -789,6 +1135,7 @@
       cachedVerdicts: verdicts.size,
       pending: pending.size,
       queued: queue.size,
+      panelOpen: panelOpen(),
       dark: document.documentElement.classList.contains("jg-dark"),
       mainFound: Boolean(document.querySelector(MAIN_SELECTOR))
     };
@@ -798,6 +1145,29 @@
       for (const row of rows) row.classList.remove("jg-debug");
     }, DEBUG_OUTLINE_MS);
     return info;
+  };
+
+  /**
+   * Opens the hover panel without a mouse (the author cannot hover on a headless
+   * box): `JevGuard.showPanel()` takes the first visible row that has a verdict,
+   * `JevGuard.showPanel(id)` a given one. `JevGuard.hidePanel()` closes it.
+   */
+  NS.showPanel = function showPanel(id) {
+    const target = id || Array.from(rowElements.keys()).find((key) => verdicts.has(key) || pending.has(key));
+    const row = target ? rowElements.get(target) : null;
+    const badge = row ? row.querySelector(".jg-badge") : null;
+    if (!badge) {
+      console.warn("[JevGuard] nessun badge da mostrare" + (id ? " per " + id : ""));
+      return null;
+    }
+    panelAnchor = badge;
+    renderPanel();
+    return panelOpen() ? target : null;
+  };
+
+  NS.hidePanel = function closePanel() {
+    hidePanel();
+    return true;
   };
 
   NS.rescan = function forceRescan() {
@@ -818,6 +1188,7 @@
   window.addEventListener("hashchange", onHashChange);
 
   (async function boot() {
+    bindPanelEvents();
     bindStorage();
     if (!storageBound) startStatusPoll();
     const initial = await readEnabled();

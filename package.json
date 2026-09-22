@@ -1,7 +1,7 @@
 {
   "name": "gmail-jev-guard",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "JevGuard — Chrome MV3 extension: spam/phishing meter for the Gmail list view, scored by TypeSafe Jev. No dependencies, no build step; this file only marks the .js sources as ESM for Node.",
   "scripts": {
